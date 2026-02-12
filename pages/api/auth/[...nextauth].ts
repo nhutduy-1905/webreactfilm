@@ -4,7 +4,11 @@ import GoogleProvider from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import { compare } from 'bcrypt';
+<<<<<<< HEAD
 import prismadb from '../../../libs/prismadb';
+=======
+import {prisma}from '../../../libs/prismadb';
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -34,7 +38,11 @@ export const authOptions: AuthOptions = {
           throw new Error('Email and password required');
         }
 
+<<<<<<< HEAD
         const user = await prismadb.user.findUnique({ where: {
+=======
+        const user = await prisma.user.findUnique({ where: {
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
           email: credentials.email
         }});
 
@@ -56,12 +64,31 @@ export const authOptions: AuthOptions = {
     signIn: '/auth'
   },
   debug: process.env.NODE_ENV === 'development',
+<<<<<<< HEAD
   adapter: PrismaAdapter(prismadb),
   session: { strategy: 'jwt' },
   jwt: {
     secret: process.env.NEXTAUTH_JWT_SECRET,
   },
   secret: process.env.NEXTAUTH_SECRET
+=======
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: 'jwt' },
+  secret: process.env.NEXTAUTH_SECRET,
+  callbacks: {
+    async session({ session, user }) {
+      if (user) {
+        session.user.id = user.id;
+      }
+      return session;
+    },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      else if (new URL(url).origin === baseUrl) return url
+      return baseUrl + "/profiles"
+    }
+  }
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
 };
 
 export default NextAuth(authOptions);

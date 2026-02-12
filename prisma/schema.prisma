@@ -34,16 +34,28 @@ model Account {
   access_token      String? @db.String
   expires_at        Int?
   token_type        String?
+<<<<<<< HEAD
   id_token          String? @db.String
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+=======
+  scope             String? @db.String
+  id_token          String? @db.String
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
 
   @@unique([provider, providerAccountId])
 }
 
+<<<<<<< HEAD
 model Session {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
+=======
+ model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId()
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
   sessionToken String   @unique
   userId       String   @db.ObjectId
   expires      DateTime
@@ -51,7 +63,11 @@ model Session {
 }
 
 model VerificationToken {
+<<<<<<< HEAD
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
+=======
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId()
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
   identifier String
   token      String   @unique
   expires    DateTime
@@ -60,7 +76,11 @@ model VerificationToken {
 }
 
 model Movie {
+<<<<<<< HEAD
   id           String @id @default(auto()) @map("_id") @db.ObjectId
+=======
+  id           String @id @default(auto()) @map("_id") @db.ObjectId()
+>>>>>>> b600d68c (chore: clean git index and ignore node_modules/build artifacts)
   title        String
   description  String
   videoUrl     String
