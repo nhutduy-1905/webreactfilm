@@ -1,0 +1,61 @@
+import React, { useState, useMemo } from 'react';
+import { MovieItem } from '../hooks/useMovieList';
+
+interface MovieCardProps {
+  data: MovieItem;
+  onClick: (id: string) => void;
+}
+
+const FALLBACK_IMG = "/images/placeholder.png";
+
+const MovieCard: React.FC<MovieCardProps> = ({ data, onClick }) => {
+  // Xử lý image URL linh hoạt với useMemo
+  const imgSrc = useMemo(() => {
+    const raw =
+      data?.thumbnailUrl ||
+      data?.thumbnail_url ||
+      data?.posterUrl ||
+      data?.image ||
+      "";
+
+    if (!raw) return FALLBACK_IMG;
+
+    if (typeof raw === "string" && !raw.startsWith("http") && !raw.startsWith("/")) {
+      return `/${raw}`;
+    }
+
+    return raw;
+  }, [data]);
+
+  const [error, setError] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(data?.id)}
+      className="
+        group relative w-full overflow-hidden rounded-lg
+        aspect-[2/3] bg-zinc-900
+        focus:outline-none focus:ring-2 focus:ring-white/60
+        transition-transform duration-300 ease-out
+        hover:scale-105 hover:z-10
+      "
+    >
+      <img
+        src={error ? FALLBACK_IMG : imgSrc}
+        alt={data?.title || 'Poster'}
+        className="
+          w-full h-full object-cover
+          transition-all duration-300
+          group-hover:brightness-110
+        "
+        onError={() => setError(true)}
+        loading="lazy"
+      />
+      {/* Subtle overlay on hover for better visual feedback */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+    </button>
+  );
+};
+
+export default MovieCard;
