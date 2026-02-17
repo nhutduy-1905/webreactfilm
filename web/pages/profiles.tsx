@@ -18,6 +18,7 @@ const images = [
 
 interface UserCardProps {
   name: string;
+  imgSrc: string;
 }
 
 export async function getServerSideProps(context: GetServerSidePropsContext) {
@@ -37,13 +38,11 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
   }
 }
 
-const UserCard: React.FC<UserCardProps> = ({ name }) => {
-  const imgSrc = images[0];
-
+const UserCard: React.FC<UserCardProps> = ({ name, imgSrc }) => {
   return (
     <div className="group flex-row w-44 mx-auto">
         <div className="w-44 h-44 rounded-md flex items-center justify-center border-2 border-transparent group-hover:cursor-pointer group-hover:border-white overflow-hidden">
-          <img draggable={false} className="w-max h-max object-contain" src={imgSrc} alt="" />
+          <img draggable={false} className="w-max h-max object-contain" src={imgSrc} alt={name} />
         </div>
       <div className="mt-4 text-gray-400 text-2xl text-center group-hover:text-white">{name}</div>
    </div>
@@ -63,7 +62,7 @@ const Profile = () => {
   }, [currentUser?.id, dispatch])
 
   const selectProfile = useCallback(() => {
-    router.push('/');
+    router.push('/?intro=1');
   }, [router]);
 
   return (
@@ -76,9 +75,14 @@ const Profile = () => {
       <div className="flex flex-col">
         <h1 className="text-3xl md:text-6xl text-white text-center">Who&#39;s watching?</h1>
         <div className="flex items-center justify-center gap-8 mt-10">
-          <div onClick={() => selectProfile()}>
-            <UserCard name={currentUser?.name} />
-          </div>
+          {images.map((imgSrc, index) => (
+            <div key={imgSrc} onClick={() => selectProfile()}>
+              <UserCard
+                name={index === 0 ? (currentUser?.name || "User") : `User ${index + 1}`}
+                imgSrc={imgSrc}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>

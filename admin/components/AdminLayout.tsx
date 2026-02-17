@@ -22,6 +22,7 @@ import {
   UnorderedListOutlined,
   CommentOutlined,
   DashboardOutlined,
+  BarChartOutlined,
   SettingOutlined,
   UserOutlined,
   BellOutlined,
@@ -32,6 +33,8 @@ import {
 import { useRouter } from 'next/router';
 import axios from 'axios';
 import { movieApi } from '../lib/api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -80,6 +83,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, breadcrumb }) => {
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [quickSearch, setQuickSearch] = useState('');
 
   const getSelectedKey = () => {
     const path = router.asPath;
@@ -117,6 +121,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, breadcrumb }) => {
       ],
     },
     { key: 'comments', icon: <CommentOutlined />, label: 'Binh luan', onClick: () => router.push('/comments') },
+    { key: 'analytics', icon: <BarChartOutlined />, label: 'Thong ke', onClick: () => router.push('/analytics') },
     { key: 'users', icon: <TeamOutlined />, label: 'Nguoi dung', onClick: () => router.push('/users') },
     { type: 'divider' as const },
     { key: 'categories', icon: <AppstoreOutlined />, label: 'The loai', onClick: () => router.push('/categories') },
@@ -156,11 +161,27 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, breadcrumb }) => {
     }
   }, [readNotificationIds]);
 
+  useEffect(() => {
+    const querySearch = typeof router.query.search === 'string' ? router.query.search : '';
+    setQuickSearch(querySearch);
+  }, [router.query.search]);
+
+  const handleQuickSearch = useCallback((value: string) => {
+    const keyword = value.trim();
+    router.push({
+      pathname: '/movies',
+      query: {
+        status: 'all',
+        ...(keyword ? { search: keyword } : {}),
+      },
+    });
+  }, [router]);
+
   const fetchNotifications = useCallback(async () => {
-    setNotificationLoading(true);
-    try {
-      const [pendingCommentsRes, draftMoviesRes, hiddenMoviesRes] = await Promise.allSettled([
-        axios.get('http://localhost:3000/api/comments/admin?page=1&limit=6&status=pending'),
+      setNotificationLoading(true);
+      try {
+        const [pendingCommentsRes, draftMoviesRes, hiddenMoviesRes] = await Promise.allSettled([
+        axios.get(`${API_URL}/api/comments/admin`, { params: { page: 1, limit: 6, status: 'pending' } }),
         movieApi.getAll({ page: 1, limit: 1, status: 'draft' }),
         movieApi.getAll({ page: 1, limit: 1, status: 'hidden' }),
       ]);
@@ -387,6 +408,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, breadcrumb }) => {
               placeholder="Tim kiem nhanh..."
               style={{ width: 280 }}
               allowClear
+              value={quickSearch}
+              onChange={(event) => setQuickSearch(event.target.value)}
+              onSearch={handleQuickSearch}
             />
           </div>
 

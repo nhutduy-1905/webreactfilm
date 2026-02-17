@@ -10,172 +10,171 @@ Dự án `webreactfilm` là hệ thống nền tảng phim/series gồm 3 phần
 
 Mục tiêu: cung cấp giao diện xem phim, quản lý nội dung, bình luận, yêu thích, đăng nhập/đăng ký và các chức năng vận hành cho quản trị viên.
 
-## 2. Cấu trúc thư mục (dạng cây đầy đủ)
+## 2. Cấu trúc thư mục (cập nhật hiện tại)
 
 ```text
 webreactfilm/
-├── admin
-│   ├── components
-│   │   ├── MovieForm.tsx
-│   │   └── AdminLayout.tsx
-│   ├── package-lock.json
-│   ├── next.config.js
-│   ├── pages
+├── admin/
+│   ├── components/
+│   │   ├── AdminLayout.tsx
+│   │   └── MovieForm.tsx
+│   ├── lib/
+│   │   └── api.ts
+│   ├── pages/
+│   │   ├── movies/
+│   │   │   ├── [id].tsx
+│   │   │   ├── create.tsx
+│   │   │   └── index.tsx
+│   │   ├── _app.tsx
+│   │   ├── actors.tsx
+│   │   ├── analytics.tsx
+│   │   ├── banners.tsx
 │   │   ├── categories.tsx
 │   │   ├── comments.tsx
-│   │   ├── banners.tsx
-│   │   ├── _app.tsx
-│   │   ├── users.tsx
-│   │   ├── actors.tsx
-│   │   ├── settings.tsx
 │   │   ├── index.tsx
-│   │   ├── movies
-│   │   │   ├── create.tsx
-│   │   │   ├── index.tsx
-│   │   │   └── [id].tsx
-│   │   └── analytics.tsx
-│   ├── tsconfig.tsbuildinfo
-│   ├── tsconfig.json
-│   ├── next-env.d.ts
-│   ├── lib
-│   │   └── api.ts
-│   ├── styles
+│   │   ├── settings.tsx
+│   │   └── users.tsx
+│   ├── styles/
 │   │   └── globals.css
-│   └── package.json
-├── ERROR-FIXES.md
-├── .gitignore
-├── Tailieu.md
-├── web
-│   ├── tsconfig.tsbuildinfo
+│   ├── next-env.d.ts
+│   ├── next.config.js
+│   ├── package.json
 │   ├── package-lock.json
 │   ├── tsconfig.json
-│   ├── .env
-│   ├── public
-│   │   ├── vercel.svg
-│   │   ├── favicon.ico
-│   │   └── images
-│   │       ├── poster.png
-│   │       ├── favicon.png
-│   │       ├── default-blue.png
-│   │       ├── logo.png
-│   │       ├── loading.gif
-│   │       ├── hero.jpg
-│   │       ├── thumbnail.jpg
-│   │       ├── default-slate.png
-│   │       ├── default-red.png
-│   │       └── default-green.png
-│   ├── global.d.ts
-│   ├── styles
-│   │   └── globals.css
-│   ├── next.config.js
-│   ├── next-env.d.ts
-│   ├── package.json
-│   ├── pages
-│   │   ├── profiles.tsx
-│   │   ├── films.tsx
-│   │   ├── new.tsx
-│   │   ├── _app.tsx
-│   │   ├── my-list.tsx
-│   │   ├── languages.tsx
-│   │   ├── watch
-│   │   │   └── [movieId].tsx
-│   │   ├── api
-│   │   │   ├── current.ts
-│   │   │   ├── auth
-│   │   │   │   └── [...nextauth].ts
-│   │   │   ├── deletefavorite.ts
-│   │   │   ├── comments
-│   │   │   │   ├── [movieId].ts
-│   │   │   │   ├── edit.ts
-│   │   │   │   ├── like.ts
-│   │   │   │   ├── admin.ts
-│   │   │   │   ├── reply.ts
-│   │   │   │   ├── create.ts
-│   │   │   │   └── delete.ts
-│   │   │   ├── register.ts
-│   │   │   ├── random.ts
-│   │   │   ├── movies
-│   │   │   │   ├── search.ts
-│   │   │   │   ├── filter.ts
-│   │   │   │   └── [id].ts
+│   └── tsconfig.tsbuildinfo
+├── backend/
+│   ├── prisma/
+│   │   └── schema.prisma
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── analytics.ts
+│   │   │   ├── comments.ts
+│   │   │   ├── commentsAdmin.ts
 │   │   │   ├── movies.ts
-│   │   │   ├── favorite.ts
-│   │   │   └── favorites.ts
-│   │   ├── index.tsx
-│   │   ├── series.tsx
-│   │   └── auth.tsx
-│   ├── components
-│   │   ├── input.tsx
-│   │   ├── MovieList.tsx
-│   │   ├── CommentSection.tsx
-│   │   ├── InfoModal.tsx
-│   │   ├── MovieCard.tsx
-│   │   ├── FavoriteButton.tsx
-│   │   ├── MobileMenu.tsx
-│   │   ├── NavbarItem.tsx
-│   │   ├── Navbar.tsx
-│   │   ├── PlayButton.tsx
-│   │   ├── Billboard.tsx
-│   │   └── AccountMenu.tsx
-│   ├── store
+│   │   │   └── users.ts
+│   │   ├── cleanup.ts
 │   │   ├── index.ts
-│   │   ├── profile.ts
-│   │   └── movies.ts
-│   ├── hooks
-│   │   ├── useMovieList.ts
-│   │   ├── useMovie.ts
+│   │   ├── prisma.ts
+│   │   ├── seed.ts
+│   │   └── swagger.ts
+│   ├── .env
+│   ├── package.json
+│   ├── package-lock.json
+│   └── tsconfig.json
+├── web/
+│   ├── components/
+│   │   ├── AccountMenu.tsx
+│   │   ├── Billboard.tsx
+│   │   ├── CommentSection.tsx
+│   │   ├── FavoriteButton.tsx
+│   │   ├── InfoModal.tsx
+│   │   ├── input.tsx
+│   │   ├── IntroN.tsx
+│   │   ├── MobileMenu.tsx
+│   │   ├── MovieCard.tsx
+│   │   ├── MovieList.tsx
+│   │   ├── Navbar.tsx
+│   │   ├── NavbarItem.tsx
+│   │   └── PlayButton.tsx
+│   ├── hooks/
+│   │   ├── useBillboard.ts
 │   │   ├── useCurrentUser.ts
 │   │   ├── useFavorites.ts
-│   │   └── useBillboard.ts
-│   ├── postcss.config.js
-│   ├── tailwind.config.js
-│   ├── libs
+│   │   ├── useMovie.ts
+│   │   └── useMovieList.ts
+│   ├── libs/
+│   │   ├── adminAuth.ts
 │   │   ├── authOptions.ts
-│   │   ├── logger.ts
 │   │   ├── fetcher.ts
+│   │   ├── logger.ts
 │   │   ├── prismadb.ts
 │   │   └── serverAuth.ts
-│   └── prisma
-│       └── schema.prisma
-├── err.md
-├── package-lock.json
-├── README.md
-├── backend
-│   ├── package.json
-│   ├── prisma
+│   ├── pages/
+│   │   ├── api/
+│   │   │   ├── analytics/
+│   │   │   │   └── track.ts
+│   │   │   ├── auth/
+│   │   │   │   └── [...nextauth].ts
+│   │   │   ├── comments/
+│   │   │   │   ├── [movieId].ts
+│   │   │   │   ├── admin.ts
+│   │   │   │   ├── create.ts
+│   │   │   │   ├── delete.ts
+│   │   │   │   ├── edit.ts
+│   │   │   │   ├── like.ts
+│   │   │   │   └── reply.ts
+│   │   │   ├── favorites/
+│   │   │   │   └── count/
+│   │   │   │       └── [movieId].ts
+│   │   │   ├── movies/
+│   │   │   │   ├── [id].ts
+│   │   │   │   ├── filter.ts
+│   │   │   │   └── search.ts
+│   │   │   ├── ratings/
+│   │   │   │   └── [movieId].ts
+│   │   │   ├── current.ts
+│   │   │   ├── deletefavorite.ts
+│   │   │   ├── favorite.ts
+│   │   │   ├── favorites.ts
+│   │   │   ├── movies.ts
+│   │   │   ├── random.ts
+│   │   │   ├── register.ts
+│   │   │   └── users.ts
+│   │   ├── watch/
+│   │   │   └── [movieId].tsx
+│   │   ├── _app.tsx
+│   │   ├── auth.tsx
+│   │   ├── films.tsx
+│   │   ├── index.tsx
+│   │   ├── languages.tsx
+│   │   ├── my-list.tsx
+│   │   ├── new.tsx
+│   │   ├── profiles.tsx
+│   │   └── series.tsx
+│   ├── prisma/
 │   │   └── schema.prisma
-│   ├── package-lock.json
-│   ├── dist
-│   │   ├── seed.d.ts
-│   │   ├── seed.js
-│   │   ├── index.d.ts
-│   │   ├── cleanup.d.ts
-│   │   ├── prisma.js
-│   │   ├── swagger.d.ts
-│   │   ├── index.js
-│   │   ├── swagger.js
-│   │   ├── cleanup.js
-│   │   ├── routes
-│   │   │   ├── movies.js
-│   │   │   ├── comments.d.ts
-│   │   │   ├── movies.d.ts
-│   │   │   └── comments.js
-│   │   └── prisma.d.ts
-│   ├── src
-│   │   ├── prisma.ts
+│   ├── public/
+│   │   ├── images/
+│   │   │   ├── default-blue.png
+│   │   │   ├── default-green.png
+│   │   │   ├── default-red.png
+│   │   │   ├── default-slate.png
+│   │   │   ├── favicon.png
+│   │   │   ├── hero.jpg
+│   │   │   ├── loading.gif
+│   │   │   ├── logo.png
+│   │   │   ├── poster.png
+│   │   │   └── thumbnail.jpg
+│   │   ├── favicon.ico
+│   │   └── vercel.svg
+│   ├── store/
 │   │   ├── index.ts
-│   │   ├── swagger.ts
-│   │   ├── seed.ts
-│   │   ├── routes
-│   │   │   ├── comments.ts
-│   │   │   └── movies.ts
-│   │   └── cleanup.ts
+│   │   ├── movies.ts
+│   │   └── profile.ts
+│   ├── styles/
+│   │   └── globals.css
+│   ├── .env
+│   ├── global.d.ts
+│   ├── next-env.d.ts
+│   ├── next.config.js
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   ├── tailwind.config.js
 │   ├── tsconfig.json
-│   └── .env
-└── package.json
+│   └── tsconfig.tsbuildinfo
+├── .gitignore
+├── Tailieu.md
+├── err.md
+├── ERROR-FIXES.md
+├── README.md
+├── package.json
+└── package-lock.json
 ```
 
-Ghi chú: cây trên đã bao gồm file ẩn quan trọng (`.env`, `.gitignore`) và loại trừ thư mục phát sinh tự động (`.git/`, `node_modules/`, `.next/`).
+Ghi chú:
+- Cây trên phản ánh cấu trúc code hiện tại theo source chính.
+- Đã loại trừ thư mục/file phát sinh tự động hoặc không cần commit: `.git/`, `node_modules/`, `.next/`, `backend/dist/`, các file log debug trong `backend/`.
 ## 3. Công nghệ sử dụng
 
 - Frontend Web/Admin: Next.js, React, TypeScript
@@ -325,8 +324,40 @@ Khi thay đổi model DB:
   - `GET /api/movies/check-duplicate`
 - File cập nhật: `backend/src/routes/movies.ts`
 
+### 13.4 Logging fetcher + chuẩn hóa contract duration
+
+- Giảm log nhạy cảm ở client fetcher:
+  - `web/libs/fetcher.ts` chỉ log `request/response preview` khi `NODE_ENV=development`.
+  - Ở production, không in preview payload để tránh nặng log và lộ dữ liệu.
+- Chuẩn hóa `duration` thống nhất kiểu `number`:
+  - `backend/src/routes/movies.ts`: helper `withGenre` trả `duration` dạng số.
+  - `web/pages/api/movies.ts`, `web/pages/api/random.ts`, `web/pages/api/movies/[id].ts`: trả `duration` dạng số ở lớp compat/fallback.
+- `web/hooks/useMovieList.ts` + `web/hooks/useMovie.ts`: normalize `duration` về số.
+- `web/store/movies.ts`: `movieState.duration` dùng `number` (không dùng union `number | string` nữa).
+
+### 13.5 Cập nhật banner trailer Doctor Slump (2026-02-17)
+
+- Cập nhật pool banner ưu tiên trong `web/components/Billboard.tsx` để thêm nhóm `doctor-slump`.
+- Banner trang chủ sẽ ưu tiên lấy trailer phim `Doctor Slump` (nếu phim có media hợp lệ và đang `published`).
+- Điều chỉnh logic chọn nhóm ưu tiên từ toàn bộ `moviesList` (không chỉ danh sách ảnh ngang) để tránh bị loại các poster dọc.
+- Giữ nguyên cơ chế fallback của banner:
+  - Nếu nhóm ưu tiên không đủ media hợp lệ thì tự bù từ danh sách phim còn lại.
+  - Vẫn dùng vòng quay nhiều trailer theo `HERO_ROTATION_POOL_SIZE`.
+
+### 13.6 Chuẩn hóa tài liệu lỗi (2026-02-17)
+
+- Đã gộp nội dung từ `ERROR-FIXES.md` vào `err.md`.
+- `ERROR-FIXES.md` được chuyển thành file tham chiếu ngắn, tránh trùng nội dung.
+- `err.md` được viết lại bằng tiếng Việt có dấu, thống nhất format:
+  - Mô tả lỗi
+  - Nguyên nhân gốc
+  - Cách sửa
+  - File ảnh hưởng
+  - Cách kiểm tra lại
+
 ---
 
 Tài liệu này đã được chuẩn hóa UTF-8 tiếng Việt có dấu.
+
 
 

@@ -1,19 +1,37 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import useSwr from "swr";
 
 import fetcher from "../libs/fetcher";
 
+export interface CurrentUser {
+  id?: string;
+  createdAt?: string;
+  email?: string;
+  emailVerified?: string | null;
+  favoriteIds?: string[];
+  image?: string | null;
+  name?: string;
+  updatedAt?: string;
+}
+
+type CurrentUserApiPayload = CurrentUser | { currentUser?: CurrentUser } | null;
+
 const useCurrentUser = () => {
-  const { data, error, isLoading, mutate } = useSwr("/api/current", fetcher, {
+  const { data, error, isLoading, mutate } = useSwr<CurrentUserApiPayload>("/api/current", fetcher, {
     revalidateIfStale: false,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     shouldRetryOnError: false,
   });
 
-  const normalizedUser = useMemo(() => {
+  const normalizedUser = useMemo<CurrentUser | null>(() => {
     if (!data) return null;
-    return (data as any).currentUser ?? data;
+
+    if (typeof data === "object" && data !== null && "currentUser" in data) {
+      return data.currentUser ?? null;
+    }
+
+    return data as CurrentUser;
   }, [data]);
 
   return {

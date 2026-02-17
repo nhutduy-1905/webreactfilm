@@ -1,20 +1,22 @@
-import React, { useState, useMemo } from 'react';
-import { MovieItem } from '../hooks/useMovieList';
+﻿import React, { useMemo, useState } from "react";
+import { MovieItem } from "../hooks/useMovieList";
 
 interface MovieCardProps {
   data: MovieItem;
   onClick: (id: string) => void;
 }
 
-const FALLBACK_IMG = "/images/placeholder.png";
+const FALLBACK_IMG = "/images/poster.png";
 
 const MovieCard: React.FC<MovieCardProps> = ({ data, onClick }) => {
-  // Xử lý image URL linh hoạt với useMemo
+  // Resolve image source from all supported movie image fields.
   const imgSrc = useMemo(() => {
     const raw =
       data?.thumbnailUrl ||
       data?.thumbnail_url ||
       data?.posterUrl ||
+      data?.imageUrl ||
+      data?.backdropUrl ||
       data?.image ||
       "";
 
@@ -32,7 +34,7 @@ const MovieCard: React.FC<MovieCardProps> = ({ data, onClick }) => {
   return (
     <button
       type="button"
-      onClick={() => onClick(data?.id)}
+      onClick={() => onClick(String(data?.id ?? data?._id ?? ""))}
       className="
         group relative w-full overflow-hidden rounded-lg
         aspect-[2/3] bg-zinc-900
@@ -43,16 +45,15 @@ const MovieCard: React.FC<MovieCardProps> = ({ data, onClick }) => {
     >
       <img
         src={error ? FALLBACK_IMG : imgSrc}
-        alt={data?.title || 'Poster'}
+        alt={data?.title || "Poster"}
         className="
-          w-full h-full object-cover
+          w-full h-full object-cover object-top
           transition-all duration-300
           group-hover:brightness-110
         "
         onError={() => setError(true)}
         loading="lazy"
       />
-      {/* Subtle overlay on hover for better visual feedback */}
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
     </button>
   );

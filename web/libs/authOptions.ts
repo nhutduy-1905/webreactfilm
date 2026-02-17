@@ -8,12 +8,42 @@ import { prisma } from './prismadb';
 
 // Only include OAuth providers if credentials are configured
 const providers: AuthOptions['providers'] = [];
+const githubClientId = process.env.GITHUB_CLIENT_ID || process.env.GITHUB_ID;
+const githubClientSecret = process.env.GITHUB_CLIENT_SECRET || process.env.GITHUB_SECRET;
 
-if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
+if (githubClientId && githubClientSecret) {
+  const githubCallbackUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/auth/callback/github`;
+
   providers.push(
     GithubProvider({
-      clientId: process.env.GITHUB_ID,
-      clientSecret: process.env.GITHUB_SECRET,
+      clientId: githubClientId,
+      clientSecret: githubClientSecret,
+      token: {
+        async request({ params }) {
+          const response = await fetch('https://github.com/login/oauth/access_token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              Accept: 'application/json',
+              'User-Agent': 'next-auth-github',
+            },
+            body: new URLSearchParams({
+              client_id: githubClientId,
+              client_secret: githubClientSecret,
+              code: String(params.code || ''),
+              redirect_uri: githubCallbackUrl,
+            }),
+          });
+
+          const tokens = await response.json();
+          if (!response.ok || !tokens?.access_token) {
+            const message = tokens?.error_description || tokens?.error || 'Token exchange failed';
+            throw new Error(`GitHub token exchange failed: ${message}`);
+          }
+
+          return { tokens };
+        },
+      },
     })
   );
 }
@@ -68,7 +98,8 @@ providers.push(
 export const authOptions: AuthOptions = {
   providers,
   pages: {
-    signIn: '/auth'
+    signIn: '/auth',
+    error: '/auth',
   },
   debug: false,
   adapter: PrismaAdapter(prisma),

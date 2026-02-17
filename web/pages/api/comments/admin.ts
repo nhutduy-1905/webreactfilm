@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../libs/prismadb';
+import serverAuth from '../../../libs/serverAuth';
+import { isAdminEmail } from '../../../libs/adminAuth';
 
 const getPrisma = () => {
   if (!prisma) {
@@ -8,20 +10,41 @@ const getPrisma = () => {
   return prisma as any;
 };
 
-const setCors = (res: NextApiResponse) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const ALLOWED_ORIGINS = new Set(['http://localhost:3000', 'http://localhost:3001']);
+
+const setCors = (req: NextApiRequest, res: NextApiResponse) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
+    const authResult = await serverAuth(req, res);
+    if (!authResult) {
+      return;
+    }
+
+    if (!isAdminEmail(authResult.currentUser.email)) {
+      const hasAdminConfig = Boolean(process.env.ADMIN_EMAILS?.trim());
+      return res.status(403).json({
+        error: hasAdminConfig
+          ? 'Admin access required'
+          : 'Admin access is not configured. Set ADMIN_EMAILS in web/.env',
+      });
+    }
+
     const db = getPrisma();
 
     if (req.method === 'GET') {
@@ -113,7 +136,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'Comment not found' });
       }
 
-      // Mark as rejected instead of hard delete for better admin audit trail
+      const hardDelete = req.query.hard === '1' || req.query.hard === 'true';
+
+      if (hardDelete) {
+        await db.comment.deleteMany({
+          where: {
+            OR: [
+              { id },
+              { parentId: id },
+            ],
+          },
+        });
+
+        return res.json({
+          id,
+          message: 'Comment deleted permanently',
+        });
+      }
+
       const updated = await db.comment.update({
         where: { id },
         data: { status: 'rejected' },

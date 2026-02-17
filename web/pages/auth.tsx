@@ -1,20 +1,62 @@
 import Head from "next/head"
 import axios from 'axios';
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NextPage } from 'next'
-import {signIn} from "next-auth/react"
+import { getProviders, signIn } from "next-auth/react"
+import { useRouter } from "next/router";
 import Input from "../components/input";
 
 import {FcGoogle} from 'react-icons/fc';
 import {FaGithub} from "react-icons/fa"
 
 const Auth: NextPage = () => {
+    const router = useRouter();
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [variant, setVariant] = useState("login");
     const [isLoading, setIsLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
+    const [providerMap, setProviderMap] = useState<Record<string, unknown> | null>(null);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        getProviders()
+            .then((providers) => {
+                if (!isMounted) return;
+                setProviderMap((providers as Record<string, unknown>) || {});
+            })
+            .catch(() => {
+                if (!isMounted) return;
+                setProviderMap({});
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (typeof router.query.error !== "string") return;
+
+        const oauthErrorMap: Record<string, string> = {
+            OAuthSignin: "OAuth sign-in failed. Please check provider config.",
+            OAuthCallback: "OAuth callback failed. Check callback URL in provider app.",
+            OAuthCreateAccount: "Cannot create OAuth account.",
+            EmailCreateAccount: "Cannot create account with this email.",
+            Callback: "Sign-in callback error.",
+            OAuthAccountNotLinked: "This email is linked with another sign-in method.",
+            AccessDenied: "Access denied by provider.",
+            Verification: "Verification token is invalid or expired.",
+            Default: "Unable to sign in right now.",
+        };
+
+        setErrorMsg(oauthErrorMap[router.query.error] || oauthErrorMap.Default);
+    }, [router.query.error]);
+
+    const isGoogleAvailable = useMemo(() => Boolean(providerMap?.google), [providerMap]);
+    const isGithubAvailable = useMemo(() => Boolean(providerMap?.github), [providerMap]);
 
     const toggleVariant = useCallback(() => {
             setVariant((currVariant) => currVariant === 'login' ? 'register' : 'login')
@@ -117,12 +159,22 @@ const Auth: NextPage = () => {
     }, [])
 
     const googleLogin = useCallback(async () => {
+        if (!isGoogleAvailable) {
+            setErrorMsg("Google login is not configured.");
+            return;
+        }
+        setErrorMsg("");
         await signIn('google', {callbackUrl: '/profiles'})
-    }, [])
+    }, [isGoogleAvailable])
 
     const githubLogin = useCallback(async () => {
+        if (!isGithubAvailable) {
+            setErrorMsg("GitHub login is not configured.");
+            return;
+        }
+        setErrorMsg("");
         await signIn('github', {callbackUrl: '/profiles'})
-    }, [])
+    }, [isGithubAvailable])
 
     return (
         <>
@@ -178,35 +230,26 @@ const Auth: NextPage = () => {
                         </button>
 
                         <div className="flex flex-row gap-4 items-center mt-6 justify-center">
-                            <div 
-                            onClick={googleLogin}
-                            className="
-                                w-10
-                                h-10
-                                bg-white
-                                rounded-full
-                                flex
-                                items-center
-                                justify-center
-                                cursor-pointer
-                                hover:opacity-80
-                                transition
-                            "><FcGoogle size={30}/></div>
-                            <div 
-                            onClick={githubLogin}
-                            className="
-                                w-10
-                                h-10
-                                bg-white
-                                rounded-full
-                                flex
-                                items-center
-                                justify-center
-                                cursor-pointer
-                                hover:opacity-80
-                                transition
-                            "><FaGithub size={30}/></div>
-
+                            <button
+                                type="button"
+                                onClick={googleLogin}
+                                disabled={!isGoogleAvailable}
+                                className={`w-10 h-10 bg-white rounded-full flex items-center justify-center transition ${
+                                    isGoogleAvailable ? "cursor-pointer hover:opacity-80" : "opacity-40 cursor-not-allowed"
+                                }`}
+                            >
+                                <FcGoogle size={30}/>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={githubLogin}
+                                disabled={!isGithubAvailable}
+                                className={`w-10 h-10 bg-white rounded-full flex items-center justify-center transition ${
+                                    isGithubAvailable ? "cursor-pointer hover:opacity-80" : "opacity-40 cursor-not-allowed"
+                                }`}
+                            >
+                                <FaGithub size={30}/>
+                            </button>
                         </div>
 
 

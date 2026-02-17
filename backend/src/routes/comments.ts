@@ -7,7 +7,7 @@ const router = Router();
  * @swagger
  * /api/comments:
  *   post:
- *     summary: Create a new comment (pending by default)
+ *     summary: Create a new comment (published immediately)
  *     tags: [Comments]
  *     requestBody:
  *       required: true
@@ -36,7 +36,7 @@ const router = Router();
  *                 example: "john@example.com"
  *     responses:
  *       201:
- *         description: Comment created successfully (pending approval)
+ *         description: Comment created successfully
  *         content:
  *           application/json:
  *             schema:
@@ -91,7 +91,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Movie not found' });
     }
 
-    // Create comment with pending status
+    // Publish immediately, admin can still reject/delete later
     const comment = await prisma.comment.create({
       data: {
         content: content.trim(),
@@ -99,13 +99,13 @@ router.post('/', async (req: Request, res: Response) => {
         userId,
         userName,
         userEmail: userEmail || null,
-        status: 'pending'
+        status: 'approved'
       }
     });
 
     res.status(201).json({
       ...comment,
-      message: 'Comment submitted successfully and is pending approval'
+      message: 'Comment submitted successfully'
     });
   } catch (error: any) {
     console.error('Error creating comment:', error);

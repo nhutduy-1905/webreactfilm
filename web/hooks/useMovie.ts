@@ -5,6 +5,15 @@ import { logInfo, logError } from "../libs/logger";
 
 type MovieDetailResponse = MovieItem | { data: MovieItem };
 
+const normalizeDuration = (raw: unknown): number => {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+};
+
 const useMovie = (id: string | null) => {
   const safeId = (id ?? "").trim();
 
@@ -26,10 +35,14 @@ const useMovie = (id: string | null) => {
     },
   });
 
-  const movieFromApi =
+  const movieFromApiRaw =
     data && typeof data === "object" && "data" in data
       ? (data.data as MovieItem)
       : (data as MovieItem | undefined);
+
+  const movieFromApi = movieFromApiRaw
+    ? { ...movieFromApiRaw, duration: normalizeDuration(movieFromApiRaw.duration) }
+    : undefined;
 
   const movie = movieFromApi ?? cachedMovie ?? null;
 

@@ -11,6 +11,8 @@ import {
 } from '@ant-design/icons';
 import AdminLayout from '../components/AdminLayout';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 interface Comment {
   id: string;
   content: string;
@@ -43,6 +45,7 @@ const CommentsPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState<Stats>({ pending: 0, approved: 0, rejected: 0, all: 0 });
   const [selectedComment, setSelectedComment] = useState<Comment | null>(null);
@@ -50,14 +53,19 @@ const CommentsPage: React.FC = () => {
 
   useEffect(() => {
     fetchComments();
-  }, [page, statusFilter]);
+  }, [page, search, statusFilter]);
 
   const fetchComments = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(
-        `http://localhost:3000/api/comments/admin?page=${page}&limit=20&status=${statusFilter}`
-      );
+      const response = await axios.get(`${API_URL}/api/comments/admin`, {
+        params: {
+          page,
+          limit: 20,
+          status: statusFilter,
+          ...(search ? { search } : {}),
+        },
+      });
       setComments(response.data.comments || []);
       setTotalPages(response.data.totalPages || 1);
       setTotal(response.data.total || 0);
@@ -77,7 +85,7 @@ const CommentsPage: React.FC = () => {
   const handleApprove = async (id: string) => {
     try {
       setProcessingId(id);
-      await axios.patch('http://localhost:3000/api/comments/admin', { id });
+      await axios.patch(`${API_URL}/api/comments/admin`, { id });
       message.success('Duyệt bình luận thành công');
       fetchComments();
     } catch (error) {
@@ -99,7 +107,9 @@ const CommentsPage: React.FC = () => {
       onOk: async () => {
         try {
           setProcessingId(id);
-          await axios.delete(`http://localhost:3000/api/comments/admin?id=${id}`);
+          await axios.delete(`${API_URL}/api/comments/admin`, {
+            params: { id },
+          });
           message.success('Đã xóa bình luận thành công');
           fetchComments();
         } catch (error) {
@@ -318,11 +328,19 @@ const CommentsPage: React.FC = () => {
             <Input
               placeholder="Tìm kiếm theo nội dung..."
               prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onPressEnter={() => fetchComments()}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onPressEnter={() => {
+                setPage(1);
+                setSearch(searchInput.trim());
+              }}
               style={{ width: 280 }}
               allowClear
+              onClear={() => {
+                setSearchInput('');
+                setPage(1);
+                setSearch('');
+              }}
             />
           </div>
         </Card>

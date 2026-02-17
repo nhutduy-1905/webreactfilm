@@ -4,6 +4,7 @@ import serverAuth from "../../libs/serverAuth";
 
 const isObjectId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+const EVENTS_COLLECTION = "movie_engagement_events";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -40,6 +41,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where: { email: currentUser.email ?? "" },
       data: { favoriteIds: { set: nextFavoriteIds } },
     });
+
+    if (!hasMovie) {
+      try {
+        await (prisma as any).$runCommandRaw({
+          insert: EVENTS_COLLECTION,
+          documents: [{
+            movieId,
+            userId: currentUser.id,
+            eventType: "favorite",
+            value: 1,
+            mode: "movie",
+            createdAt: new Date(),
+          }],
+        });
+      } catch (error) {
+        console.error("Failed to track favorite event:", error);
+      }
+    }
 
     return res.status(200).json(user);
   } catch (error) {

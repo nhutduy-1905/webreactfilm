@@ -26,7 +26,9 @@ const UsersPage: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`http://localhost:3000/api/users?page=${pagination.page}&limit=${pagination.limit}&search=${search}`);
+      const response = await axios.get(`http://localhost:3000/api/users?page=${pagination.page}&limit=${pagination.limit}&search=${search}`, {
+        withCredentials: true,
+      });
       setUsers(response.data.data || []);
       setPagination(prev => ({ ...prev, total: response.data.total || 0 }));
     } catch (error) {

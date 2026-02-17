@@ -10,16 +10,33 @@ export type MovieItem = {
   thumbnailUrl?: string;
   thumbnail_url?: string;
   posterUrl?: string;
+  backdropUrl?: string;
+  imageUrl?: string;
   image?: string;
+  movieUrl?: string;
   videoUrl?: string;
+  video_url?: string;
+  trailerUrl?: string;
+  trailer_url?: string;
   genre?: string;
   duration?: number;
-  [key: string]: any;
+  code?: string;
+  slug?: string;
+  studio?: string;
+  director?: string;
+  cast?: string[];
+  status?: string;
+  ageRating?: string;
+  releaseDate?: string;
+  tags?: string[];
+  subtitles?: string[];
+  categories?: string[];
+  language?: string[];
 };
 
 type MoviesApiResponse = MovieItem[] | { data?: MovieItem[] };
 
-const FALLBACK_POSTER = "/images/placeholder.png";
+const FALLBACK_POSTER = "/images/poster.png";
 
 const normalizeImageUrl = (raw?: string) => {
   if (!raw || typeof raw !== "string") return FALLBACK_POSTER;
@@ -28,10 +45,31 @@ const normalizeImageUrl = (raw?: string) => {
   return `/${raw}`;
 };
 
+const normalizeDuration = (raw: unknown): number => {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+};
+
 const normalizeMovie = (m: MovieItem): MovieItem => {
-  const thumb = m.thumbnailUrl || m.thumbnail_url || m.posterUrl || m.image || FALLBACK_POSTER;
+  const thumb =
+    m.thumbnailUrl ||
+    m.thumbnail_url ||
+    m.posterUrl ||
+    m.imageUrl ||
+    m.backdropUrl ||
+    m.image ||
+    FALLBACK_POSTER;
   const id = String(m.id ?? m._id ?? "");
-  return { ...m, id, thumbnailUrl: normalizeImageUrl(thumb) };
+  return {
+    ...m,
+    id,
+    duration: normalizeDuration(m.duration),
+    thumbnailUrl: normalizeImageUrl(thumb),
+  };
 };
 
 const extractMovies = (payload: MoviesApiResponse | null | undefined): MovieItem[] => {

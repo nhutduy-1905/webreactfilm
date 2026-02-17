@@ -9,7 +9,7 @@ export interface movieState {
     thumbnailUrl: string,
     genre: string,
     categories?: string[],
-    duration: number | string,
+    duration: number,
     id: string,
     code?: string,
     slug?: string,
@@ -47,7 +47,7 @@ const  initialState:initialState = {
         videoUrl: "",
         thumbnailUrl: "",
         genre: "",
-        duration:"",
+        duration: 0,
         id:  "",
     }],
 }
@@ -75,7 +75,7 @@ const movieSlice = createSlice({
                 videoUrl: "",
                 thumbnailUrl: "",
                 genre: "",
-                duration:"",
+                duration: 0,
                 id:  "",
             }]
         }

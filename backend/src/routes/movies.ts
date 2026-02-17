@@ -2,13 +2,76 @@ import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
 
 const router = Router();
+const EVENTS_COLLECTION = 'movie_engagement_events';
+
+async function readAggregate(pipeline: Record<string, unknown>[]) {
+  try {
+    const result = await (prisma as any).$runCommandRaw({
+      aggregate: EVENTS_COLLECTION,
+      pipeline,
+      cursor: {},
+    });
+    const rows = result?.cursor?.firstBatch;
+    return Array.isArray(rows) ? rows : [];
+  } catch (error: any) {
+    const message = String(error?.message || '');
+    if (message.includes('NamespaceNotFound') || message.includes('ns not found')) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function getViewCountsByMovieIds(movieIds: string[]): Promise<Map<string, number>> {
+  const uniqueMovieIds = Array.from(new Set(
+    movieIds
+      .map((id) => String(id || '').trim())
+      .filter(Boolean),
+  ));
+
+  if (!uniqueMovieIds.length) return new Map();
+
+  const rows = await readAggregate([
+    {
+      $match: {
+        eventType: 'view',
+        movieId: { $in: uniqueMovieIds },
+      },
+    },
+    {
+      $group: {
+        _id: '$movieId',
+        total: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const viewCountByMovieId = new Map<string, number>();
+  for (const row of rows as any[]) {
+    const movieId = String(row?._id || '');
+    if (!movieId) continue;
+    viewCountByMovieId.set(movieId, Math.max(0, Number(row?.total || 0)));
+  }
+
+  for (const movieId of uniqueMovieIds) {
+    if (!viewCountByMovieId.has(movieId)) {
+      viewCountByMovieId.set(movieId, 0);
+    }
+  }
+
+  return viewCountByMovieId;
+}
 
 // Helper: add backward-compatible genre field + image aliases
-function withGenre(movie: any) {
+function withGenre(movie: any, rawViewCount = 0) {
+  const viewCount = Math.max(0, Math.floor(Number(rawViewCount) || 0));
   return {
     ...movie,
     genre: (movie.categories || []).join(', '),
     duration: String(movie.duration),
+    viewCount,
+    views: viewCount,
+    view_count: viewCount,
     // backward compat: populate old fields from imageUrl
     posterUrl: movie.imageUrl || movie.posterUrl,
     backdropUrl: movie.imageUrl || movie.backdropUrl,
@@ -45,9 +108,13 @@ function toSlug(title: string): string {
  *         schema: { type: integer, default: 20 }
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [draft, published, hidden] }
+ *         schema: { type: string, enum: [all, draft, published, hidden] }
+ *         description: Defaults to published when omitted. Use all for admin listing.
  *       - in: query
  *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: ageRating
  *         schema: { type: string }
  *       - in: query
  *         name: search
@@ -72,11 +139,13 @@ router.get('/', async (req: Request, res: Response) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
     const skip = (page - 1) * limit;
 
-    // Default to published movies (for public/user-facing endpoints)
-    const where: any = { status: 'published' };
-
-    if (req.query.status) {
-      where.status = req.query.status;
+    // Default to published movies. Admin can pass status=all to disable status filter.
+    const where: any = {};
+    const statusQuery = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    if (!statusQuery) {
+      where.status = 'published';
+    } else if (statusQuery !== 'all') {
+      where.status = statusQuery;
     }
     if (req.query.category) {
       where.categories = { has: req.query.category as string };
@@ -100,9 +169,10 @@ router.get('/', async (req: Request, res: Response) => {
       }),
       prisma.movie.count({ where }),
     ]);
+    const viewCountByMovieId = await getViewCountsByMovieIds(movies.map((movie) => movie.id));
 
     res.json({
-      data: movies.map(withGenre),
+      data: movies.map((movie) => withGenre(movie, viewCountByMovieId.get(movie.id) || 0)),
       pagination: {
         total,
         page,
@@ -141,8 +211,11 @@ router.get('/random', async (_req: Request, res: Response) => {
       take: 1,
       skip,
     });
+    const selectedMovie = movies[0];
+    if (!selectedMovie) return res.status(404).json({ error: 'No movies found' });
+    const viewCountByMovieId = await getViewCountsByMovieIds([selectedMovie.id]);
 
-    res.json(withGenre(movies[0]));
+    res.json(withGenre(selectedMovie, viewCountByMovieId.get(selectedMovie.id) || 0));
   } catch (error) {
     console.error('GET /api/movies/random error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -177,8 +250,9 @@ router.get('/search', async (req: Request, res: Response) => {
       take: 20,
       orderBy: { title: 'asc' },
     });
+    const viewCountByMovieId = await getViewCountsByMovieIds(movies.map((movie) => movie.id));
 
-    res.json(movies.map(withGenre));
+    res.json(movies.map((movie) => withGenre(movie, viewCountByMovieId.get(movie.id) || 0)));
   } catch (error) {
     console.error('GET /api/movies/search error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -328,7 +402,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       where: { id: req.params.id },
     });
     if (!movie) return res.status(404).json({ error: 'Movie not found' });
-    res.json(withGenre(movie));
+    const viewCountByMovieId = await getViewCountsByMovieIds([movie.id]);
+    res.json(withGenre(movie, viewCountByMovieId.get(movie.id) || 0));
   } catch (error) {
     console.error('GET /api/movies/:id error:', error);
     res.status(500).json({ error: 'Internal server error' });

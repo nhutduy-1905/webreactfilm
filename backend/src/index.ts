@@ -4,6 +4,9 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger';
 import movieRoutes from './routes/movies';
 import commentRoutes from './routes/comments';
+import commentAdminRoutes from './routes/commentsAdmin';
+import analyticsRoutes from './routes/analytics';
+import userRoutes from './routes/users';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,6 +24,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // Routes
 app.use('/api/movies', movieRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/comments/admin', commentAdminRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

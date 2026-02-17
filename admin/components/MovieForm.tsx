@@ -16,12 +16,33 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 const CATEGORIES = [
-  'Hành động', 'Hài', 'Tình cảm', 'Kinh dị', 'Tâm linh', 'Tâm lý',
-  'Khoa học viễn tưởng', 'Phiêu lưu', 'Hoạt hình', 'Gia đình',
-  'Tội phạm', 'Bí ẩn', 'Lịch sử', 'Chiến tranh', 'Tiểu sử',
-  'Chính kịch', 'Thể thao', 'Âm nhạc', 'Tài liệu','Trinh thám','Viễn tưởng','Bi ẩn'
+  'Hành động',
+  'Hài',
+  'Tình cảm',
+  'Kinh dị',
+  'Tâm linh',
+  'Tâm lý',
+  'Khoa học viễn tưởng',
+  'Phiêu lưu',
+  'Hoạt hình',
+  'Gia đình',
+  'Tội phạm',
+  'Bí ẩn',
+  'Lịch sử',
+  'Chiến tranh',
+  'Tiểu sử',
+  'Chính kịch',
+  'Thể thao',
+  'Âm nhạc',
+  'Tài liệu',
+  'Trinh thám',
+  'Viễn tưởng',
+  'Series',
+  'Thần thoại',
+  'Cổ trang',
+  'Học đường',
+  'Kinh điển',
 ];
-
 const AGE_RATINGS: { value: string; label: string; desc: string }[] = [
   { value: 'P', label: 'P', desc: 'Phổ biến cho mọi đối tượng' },
   { value: 'T13', label: 'T13', desc: 'Từ 13 tuổi trở lên' },
@@ -195,10 +216,20 @@ const MovieForm: React.FC<MovieFormProps> = ({ initialValues, onSubmit, loading 
   const handleFinish = async (values: any) => {
     const title = sanitizeText(values.title || '');
     const description = sanitizeText(values.description || '');
+    const normalizedCategories = Array.isArray(values.categories)
+      ? Array.from(
+          new Set(
+            values.categories
+              .map((value: unknown) => String(value || '').trim())
+              .filter(Boolean)
+          )
+        )
+      : [];
     const payload = {
       ...values,
       title,
       description,
+      categories: normalizedCategories,
       releaseDate: values.releaseDate?.toISOString(),
       duration: Number(values.duration) || 0,
       status: submitting === 'publish' ? 'published' : (submitting === 'draft' ? 'draft' : values.status),
@@ -390,8 +421,9 @@ const MovieForm: React.FC<MovieFormProps> = ({ initialValues, onSubmit, loading 
                 name="categories"
                 label="Thể loại"
                 rules={[{ required: currentStatus === 'published', message: 'Xuất bản cần ít nhất 1 thể loại', type: 'array' }]}
+                extra={<Text type="secondary">Có thể chọn từ danh sách hoặc tự nhập thể loại mới</Text>}
               >
-                <Select mode="multiple" placeholder="Chọn thể loại" maxTagCount={3} listHeight={220} showSearch optionFilterProp="children">
+                <Select mode="tags" placeholder="Chọn hoặc nhập thể loại" maxTagCount={3} listHeight={220} showSearch optionFilterProp="children" tokenSeparators={[',']}>
                   {CATEGORIES.map((c) => <Select.Option key={c} value={c}>{c}</Select.Option>)}
                 </Select>
               </Form.Item>
@@ -454,27 +486,14 @@ const MovieForm: React.FC<MovieFormProps> = ({ initialValues, onSubmit, loading 
           </Col>
         </Row>
       </Form>
-
       {/* Sticky Action Bar */}
-      <Affix offsetBottom={0}>
+      <Affix offsetBottom={16}>
         <div style={{
-          background: '#fff',
-          borderTop: '1px solid #e8e8e8',
-          padding: '12px 24px',
+          padding: '0 24px',
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
+          justifyContent: 'flex-end',
           zIndex: 100,
         }}>
-          <Space>
-            <Text type="secondary">
-              {isEdit ? `Đang sửa: ${initialValues?.code || ''}` : 'Tạo phim mới'}
-              {isEdit && initialValues?.status === 'draft' && (
-                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>(Tự lưu nháp mỗi 15 giây)</Text>
-              )}
-            </Text>
-          </Space>
           <Space size="middle">
             <Button icon={<CloseOutlined />} onClick={handleCancel}>Hủy</Button>
             <Button icon={<SaveOutlined />} onClick={handleSaveDraft} loading={loading && submitting === 'draft'}>Lưu nháp</Button>

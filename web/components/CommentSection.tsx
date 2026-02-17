@@ -11,6 +11,7 @@ interface Reply {
   userName: string;
   userAvatar?: string;
   userId: string;
+  status?: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   updatedAt: string;
   likes: number;
@@ -25,6 +26,7 @@ interface Comment {
   userName: string;
   userAvatar?: string;
   userId: string;
+  status?: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   updatedAt: string;
   likes: number;
@@ -42,6 +44,7 @@ interface CommentSectionProps {
 const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState<'newest' | 'top' | 'oldest'>('top');
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -54,13 +57,14 @@ const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
   const fetchComments = useCallback(async () => {
     try {
       setLoading(true);
+      setErrorMessage('');
       const response = await axios.get(`/api/comments/${movieId}?sort=${sortBy}&limit=50`);
       console.log('Comments response:', response.data);
       setComments(response.data.comments || []);
       setTotal(response.data.total || 0);
     } catch (error: any) {
       console.error('Error fetching comments:', error);
-      // Show empty state but don't crash
+      setErrorMessage(error?.response?.data?.error || 'Khong tai duoc binh luan. Vui long thu lai.');
       setComments([]);
       setTotal(0);
     } finally {
@@ -85,8 +89,12 @@ const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
       });
       console.log('Comment submitted successfully:', response.data);
       setNewComment('');
-      setSuccessMessage('✓ Bình luận đã được gửi, đang chờ duyệt.');
-      fetchComments();
+      setSuccessMessage('✓ Bình luận đã đăng thành công.');
+      if (sortBy !== 'newest') {
+        setSortBy('newest');
+      } else {
+        fetchComments();
+      }
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error: any) {
       console.error('Error posting comment:', error);
@@ -136,7 +144,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
     return `${diffYears} năm trước`;
   };
 
-  const getAvatar = (userName: string, userAvatar?: string) => {
+  const getAvatar = (userName: string, userAvatar?: string | null) => {
     if (userAvatar) {
       return <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />;
     }
@@ -234,6 +242,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
         </div>
+      ) : errorMessage ? (
+        <div className="text-center py-12">
+          <p className="text-red-400 text-sm">{errorMessage}</p>
+        </div>
       ) : comments.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-400 text-lg">Chưa có bình luận nào</p>
@@ -266,7 +278,7 @@ interface CommentItemProps {
   currentUserId?: string;
   onLikeDislike: (commentId: string, action: 'like' | 'dislike') => void;
   onReplyAdded: () => void;
-  getAvatar: (userName: string, userAvatar?: string) => JSX.Element;
+  getAvatar: (userName: string, userAvatar?: string | null) => JSX.Element;
   formatDate: (dateString: string) => string;
   isReply?: boolean;
 }
@@ -360,6 +372,9 @@ const CommentItem: React.FC<CommentItemProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-white font-medium text-sm">{comment.userName}</span>
               <span className="text-gray-400 text-xs">{formatDate(comment.createdAt)}</span>
+              {comment.status === 'pending' && (
+                <span className="text-amber-300 text-xs">(Dang cho duyet)</span>
+              )}
               {comment.updatedAt !== comment.createdAt && (
                 <span className="text-gray-500 text-xs">(đã chỉnh sửa)</span>
               )}

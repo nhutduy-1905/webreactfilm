@@ -26,6 +26,9 @@ export interface Movie {
   imageUrl?: string;
   trailerUrl?: string;
   videoUrl?: string;
+  viewCount?: number;
+  views?: number;
+  view_count?: number;
   // backward compat aliases
   posterUrl?: string;
   backdropUrl?: string;

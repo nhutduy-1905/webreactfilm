@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Movie not found' });
     }
 
-    // New comments should be reviewed by admin first
+    // Publish immediately, admin can still reject/delete later
     const comment = await db.comment.create({
       data: {
         content: content.trim(),
@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         userName: currentUser.name,
         userEmail: currentUser.email || null,
         userAvatar: currentUser.image || null,
-        status: 'pending',
+        status: 'approved',
         likes: 0,
         dislikes: 0,
         likedBy: [],
@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Comment created successfully:', comment.id);
     return res.status(201).json({
       ...comment,
-      message: 'Comment submitted successfully and is waiting for approval'
+      message: 'Comment submitted successfully'
     });
   } catch (error: any) {
     console.error('Error creating comment:', error);

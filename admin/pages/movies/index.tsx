@@ -18,6 +18,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 
 const STATUS_MAP: Record<string, { color: string; label: string }> = {
+  all: { color: 'default', label: 'Tất cả' },
   draft: { color: 'default', label: 'Nháp' },
   published: { color: 'green', label: 'Đang chiếu' },
   hidden: { color: 'red', label: 'Ẩn' },
@@ -36,21 +37,28 @@ export default function MoviesPage() {
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20 });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
 
   // Sync with URL query params
   useEffect(() => {
     if (router.query.status) {
       setStatusFilter(router.query.status as string);
+      return;
     }
+    setStatusFilter('all');
   }, [router.query.status]);
+
+  useEffect(() => {
+    const querySearch = typeof router.query.search === 'string' ? router.query.search : '';
+    setSearch(querySearch);
+  }, [router.query.search]);
 
   const fetchMovies = useCallback(async (page = 1) => {
     setLoading(true);
     try {
       const params: Record<string, any> = { page, limit: pagination.limit };
-      if (search) params.search = search;
+      if (search.trim()) params.search = search.trim();
       if (statusFilter) params.status = statusFilter;
       if (categoryFilter) params.category = categoryFilter;
 
@@ -183,17 +191,33 @@ export default function MoviesPage() {
               prefix={<SearchOutlined />}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onPressEnter={() => fetchMovies(1)}
+              onPressEnter={() => {
+                const keyword = search.trim();
+                router.replace(
+                  {
+                    pathname: '/movies',
+                    query: {
+                      status: statusFilter || 'all',
+                      ...(categoryFilter ? { category: categoryFilter } : {}),
+                      ...(keyword ? { search: keyword } : {}),
+                    },
+                  },
+                  undefined,
+                  { shallow: true }
+                );
+                fetchMovies(1);
+              }}
               style={{ width: 250 }}
               allowClear
             />
             <Select
               placeholder="Trạng thái"
               value={statusFilter}
-              onChange={(s) => setStatusFilter(s)}
-              allowClear
+              onChange={(s) => setStatusFilter(s || 'all')}
+              allowClear={false}
               style={{ width: 140 }}
             >
+              <Select.Option value="all">Tất cả</Select.Option>
               <Select.Option value="draft">Nháp</Select.Option>
               <Select.Option value="published">Đang chiếu</Select.Option>
               <Select.Option value="hidden">Ẩn</Select.Option>

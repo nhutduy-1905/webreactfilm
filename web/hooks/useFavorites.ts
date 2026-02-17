@@ -16,8 +16,9 @@ const useFavorites = () => {
   });
 
   const fallbackFavorites = useMemo(() => {
-    const ids = Array.isArray((currentUser as any)?.favoriteIds)
-      ? (currentUser as any).favoriteIds.map((id: unknown) => String(id))
+    const favoriteIds = currentUser?.favoriteIds;
+    const ids = Array.isArray(favoriteIds)
+      ? favoriteIds.map((id) => String(id))
       : [];
 
     if (ids.length === 0 || movieList.length === 0) return [];

@@ -1,11 +1,71 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../libs/prismadb';
 
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
+
 const getPrisma = () => {
   if (!prisma) {
     throw new Error('Prisma client not initialized');
   }
   return prisma as any;
+};
+
+const normalizeBackendComment = (raw: any) => ({
+  ...raw,
+  id: String(raw?.id ?? raw?._id ?? ''),
+  likes: Number(raw?.likes ?? 0),
+  dislikes: Number(raw?.dislikes ?? 0),
+  likedBy: Array.isArray(raw?.likedBy) ? raw.likedBy : [],
+  dislikedBy: Array.isArray(raw?.dislikedBy) ? raw.dislikedBy : [],
+  replies: [],
+  replyCount: 0,
+});
+
+const sortComments = (comments: any[], sort: unknown) => {
+  if (sort === 'oldest') {
+    return [...comments].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }
+  if (sort === 'top') {
+    return [...comments].sort((a, b) => Number(b.likes || 0) - Number(a.likes || 0));
+  }
+  return [...comments].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+};
+
+const fetchCommentsFromBackend = async (
+  movieId: string,
+  page: number,
+  limit: number,
+  sort: unknown
+) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  const response = await fetch(
+    `${BACKEND_API_URL}/api/comments/movie/${encodeURIComponent(movieId)}?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json();
+  const commentsRaw = Array.isArray(payload?.comments) ? payload.comments : [];
+  const normalized = sortComments(commentsRaw.map(normalizeBackendComment), sort);
+
+  return {
+    comments: normalized,
+    total: Number(payload?.total ?? normalized.length),
+    page: Number(payload?.page ?? page),
+    totalPages: Number(payload?.totalPages ?? Math.ceil(normalized.length / Math.max(limit, 1))),
+  };
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -32,10 +92,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       orderBy = { createdAt: 'asc' };
     }
 
+    // Keep all non-rejected comments visible on web (approved + pending).
+    // Note: Prisma StringFilter does not support `isSet`.
+    const nonRejectedStatusWhere = { status: { not: 'rejected' } };
     const whereTopLevel = {
       movieId: String(movieId),
-      status: 'approved',
-      parentId: null,
+      OR: [
+        { parentId: null },
+        { parentId: { isSet: false } },
+      ],
+      AND: [nonRejectedStatusWhere],
     };
 
     const [comments, total] = await Promise.all([
@@ -53,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const replies = await db.comment.findMany({
           where: {
             parentId: comment.id,
-            status: 'approved',
+            AND: [nonRejectedStatusWhere],
           },
           orderBy: { createdAt: 'asc' },
         });
@@ -65,6 +131,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
       })
     );
+
+    if (commentsWithReplies.length > 0) {
+      return res.json({
+        comments: commentsWithReplies,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      });
+    }
+
+    // Fallback: comments may exist in backend DB when web DB is empty or out of sync.
+    try {
+      const backendPayload = await fetchCommentsFromBackend(String(movieId), page, limit, sort);
+      if (backendPayload) {
+        res.setHeader('x-comments-source', 'backend-fallback');
+        return res.json(backendPayload);
+      }
+    } catch {
+      // ignore fallback failure and return local empty payload
+    }
 
     return res.json({
       comments: commentsWithReplies,
