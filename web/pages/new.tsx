@@ -1,22 +1,17 @@
 import React, { useMemo } from 'react';
 import { GetServerSidePropsContext } from 'next';
-import { getServerSession } from "next-auth";
-import { authOptions } from "../libs/authOptions";
 import useMovieList from "../hooks/useMovieList";
 import Navbar from '../components/Navbar';
 import MovieList from '../components/MovieList';
 import InfoModal from '../components/InfoModal';
+import { AUTH_REDIRECT, isSsrRequestAuthenticated } from "../libs/ssrAuth";
 
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-  const session = await getServerSession(context.req, context.res, authOptions);
-  if (!session) {
-    return {
-      redirect: {
-        destination: '/auth',
-        permanent: false,
-      }
-    }
+  const isAuthenticated = await isSsrRequestAuthenticated(context);
+  if (!isAuthenticated) {
+    return AUTH_REDIRECT;
   }
+
   return { props: {} };
 }
 

@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import Head from "next/head";
 import type { NextPage, GetServerSidePropsContext } from "next";
 import { useRouter } from "next/router";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../libs/authOptions";
+import { AUTH_REDIRECT, isSsrRequestAuthenticated } from "../libs/ssrAuth";
 
 import { profileActions, type ProfileState } from "../store/profile";
 import { movieActions, type movieState } from "../store/movies";
@@ -34,14 +33,9 @@ type HomePageProps = {
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-  const session = await getServerSession(context.req, context.res, authOptions);
-  if (!session) {
-    return {
-      redirect: {
-        destination: "/auth",
-        permanent: false,
-      },
-    };
+  const isAuthenticated = await isSsrRequestAuthenticated(context);
+  if (!isAuthenticated) {
+    return AUTH_REDIRECT;
   }
 
   const introParam = context.query.intro;
@@ -212,4 +206,3 @@ const Home: NextPage<HomePageProps> = ({ showIntroOnLoad }) => {
 };
 
 export default Home;
-

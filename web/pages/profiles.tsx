@@ -1,13 +1,12 @@
 import type { GetServerSidePropsContext } from "next";
 import Head from "next/head"
-import { getServerSession } from "next-auth";
-import { authOptions } from "../libs/authOptions";
 import { useRouter } from "next/router";
 import { useCallback, useEffect } from "react";
 import { profileActions } from "../store/profile";
 import { useAppDispatch} from "../store/index";
 
 import useCurrentUser from "../hooks/useCurrentUser";
+import { AUTH_REDIRECT, isSsrRequestAuthenticated } from "../libs/ssrAuth";
 
 const images = [
   '/images/default-blue.png',
@@ -22,15 +21,9 @@ interface UserCardProps {
 }
 
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-  const session = await getServerSession(context.req, context.res, authOptions);
-
-  if (!session) {
-    return {
-      redirect: {
-        destination: '/auth',
-        permanent: false,
-      }
-    }
+  const isAuthenticated = await isSsrRequestAuthenticated(context);
+  if (!isAuthenticated) {
+    return AUTH_REDIRECT;
   }
 
   return {
