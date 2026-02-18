@@ -9,6 +9,7 @@
     "prestart": "prisma generate",
     "start": "node dist/index.js",
     "seed": "ts-node src/seed.ts",
+    "seed:reset": "ts-node src/seed.ts --truncate",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
   },

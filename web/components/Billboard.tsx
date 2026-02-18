@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AiOutlineInfoCircle } from "react-icons/ai";
+import { BsChevronLeft, BsChevronRight } from "react-icons/bs";
 import { IoVolumeHighOutline, IoVolumeMuteOutline } from "react-icons/io5";
 import { useAppSelector, useAppDispatch } from "../store/index";
 import { movieActions, movieState } from "../store/movies";
@@ -14,11 +15,9 @@ const HERO_MEDIA_STYLE: React.CSSProperties = {
 const WIDE_BANNER_MIN_RATIO = 1.45;
 const MIN_WIDE_BANNER_POOL = 8;
 const HERO_UNMUTED_VOLUME = 70;
+const HERO_DEFAULT_TRAILER_DURATION_SECONDS = 30;
 const parsedHeroRotateMs = Number(process.env.NEXT_PUBLIC_HERO_BANNER_ROTATE_MS);
-const HERO_ROTATE_INTERVAL_MS = Number.isFinite(parsedHeroRotateMs)
-  ? Math.max(8000, Math.floor(parsedHeroRotateMs))
-  : 22000;
-const HERO_ROTATION_POOL_SIZE = 5;
+const HERO_ROTATION_POOL_SIZE = 6;
 const ENABLE_YOUTUBE_HERO = (process.env.NEXT_PUBLIC_ENABLE_YOUTUBE_HERO ?? "1") === "1";
 type PreferredBannerGroup = {
   key: string;
@@ -29,28 +28,50 @@ type PreferredBannerGroup = {
 
 const PREFERRED_BANNER_GROUPS: readonly PreferredBannerGroup[] = [
   {
-    key: "conan",
-    keywords: ["conan", "detective conan", "tham tu lung danh conan"],
+    key: "gojo",
+    keywords: ["gojo"],
   },
   {
-    key: "jujutsu-kaisen",
-    keywords: ["jujutsu kaisen", "chu thuat hoi chien", "jujutsu"],
+    key: "sukuna",
+    keywords: ["sukuna"],
   },
   {
-    key: "kung-fu-panda",
-    keywords: ["kung fu panda", "panda"],
-  },
-  {
-    key: "demon-slayer",
-    keywords: ["demon slayer", "thanh guom diet quy", "kimetsu no yaiba"],
-    preferredKeywords: ["vo han thanh", "infinity castle"],
-    blockedKeywords: ["chuyen tau vo tan", "mugen train", "mugen"],
+    key: "demon-slayer-infinity-castle",
+    keywords: [
+      "vo han thanh",
+      "infinity castle",
+      "thanh guom diet quy vo han thanh",
+      "demon slayer infinity castle",
+    ],
   },
   {
     key: "doctor-slump",
     keywords: ["doctor slump", "bac si slump"],
   },
+  {
+    key: "pokemon",
+    keywords: ["pokemon", "pokemon horizons", "pokemon journeys"],
+  },
+  {
+    key: "beloved-summer",
+    keywords: ["mua he yeu dau", "our beloved summer"],
+  },
 ];
+const ALLOWED_BANNER_KEYWORDS = [
+  "gojo",
+  "sukuna",
+  "vo han thanh",
+  "infinity castle",
+  "thanh guom diet quy vo han thanh",
+  "demon slayer infinity castle",
+  "doctor slump",
+  "bac si slump",
+  "pokemon",
+  "pokemon horizons",
+  "pokemon journeys",
+  "mua he yeu dau",
+  "our beloved summer",
+] as const;
 
 const resolveBannerSource = (movie?: Partial<movieState> | null): string => {
   if (!movie) return "/images/default-slate.png";
@@ -59,7 +80,10 @@ const resolveBannerSource = (movie?: Partial<movieState> | null): string => {
 
 const DIRECT_VIDEO_PATTERN = /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i;
 
-function toYoutubeHeroEmbed(raw?: string): string {
+function toYoutubeHeroEmbed(
+  raw?: string,
+  trailerDurationSeconds: number = HERO_DEFAULT_TRAILER_DURATION_SECONDS
+): string {
   if (!raw) return "";
 
   try {
@@ -76,6 +100,8 @@ function toYoutubeHeroEmbed(raw?: string): string {
       embed.searchParams.set("iv_load_policy", "3");
       embed.searchParams.set("loop", "1");
       embed.searchParams.set("playlist", id);
+      embed.searchParams.set("start", "0");
+      embed.searchParams.set("end", String(trailerDurationSeconds));
       embed.searchParams.set("disablekb", "1");
       embed.searchParams.set("fs", "0");
       embed.searchParams.set("showinfo", "0");
@@ -166,6 +192,10 @@ function movieHasAnyKeyword(
   return movieMatchesAnyKeyword(movie, keywords);
 }
 
+function isAllowedForBanner(movie?: Partial<movieState> | null): boolean {
+  return movieMatchesAnyKeyword(movie, ALLOWED_BANNER_KEYWORDS);
+}
+
 function hasRenderableBannerMedia(movie?: Partial<movieState> | null): boolean {
   if (!movie) return false;
 
@@ -181,7 +211,8 @@ function buildPreferredBannerPool(movies: movieState[]): movieState[] {
 
   for (const group of PREFERRED_BANNER_GROUPS) {
     const groupCandidates = movies.filter((movie) => (
-      movieMatchesAnyKeyword(movie, group.keywords)
+      isAllowedForBanner(movie)
+      && movieMatchesAnyKeyword(movie, group.keywords)
       && !movieHasAnyKeyword(movie, group.blockedKeywords)
       && hasRenderableBannerMedia(movie)
     ));
@@ -250,17 +281,19 @@ const Billboard: React.FC = () => {
 
   const bannerCandidates = useMemo(() => {
     if (!moviesList || moviesList.length === 0) return [];
+    const allowedBannerMovies = moviesList.filter((movie) => isAllowedForBanner(movie));
+    if (!allowedBannerMovies.length) return [];
 
-    const wideMovies = moviesList.filter((movie) => {
+    const wideMovies = allowedBannerMovies.filter((movie) => {
       const movieId = String(movie?.id || "");
       const ratio = mediaRatioByMovieId[movieId];
       return typeof ratio === "number" && ratio >= WIDE_BANNER_MIN_RATIO;
     });
 
     // If wide-banner pool is too small, fallback to full list to avoid repeating only a few titles.
-    return wideMovies.length >= Math.min(MIN_WIDE_BANNER_POOL, moviesList.length)
+    return wideMovies.length >= Math.min(MIN_WIDE_BANNER_POOL, allowedBannerMovies.length)
       ? wideMovies
-      : moviesList;
+      : allowedBannerMovies;
   }, [mediaRatioByMovieId, moviesList]);
 
   const rotationPool = useMemo(() => {
@@ -285,32 +318,39 @@ const Billboard: React.FC = () => {
   }, [bannerCandidates, moviesList]);
 
   const rotationPoolSize = rotationPool.length;
+  const currentHeroIndex = useMemo(() => {
+    if (!rotationPoolSize) return 0;
+    return ((heroIndexSeed % rotationPoolSize) + rotationPoolSize) % rotationPoolSize;
+  }, [heroIndexSeed, rotationPoolSize]);
+
+  const randomMovie = useMemo(() => {
+    if (!rotationPool.length) return undefined;
+
+    return rotationPool[currentHeroIndex];
+  }, [currentHeroIndex, rotationPool]);
+
+  const heroRotateIntervalMs = Number.isFinite(parsedHeroRotateMs)
+    ? Math.max(8000, Math.floor(parsedHeroRotateMs))
+    : HERO_DEFAULT_TRAILER_DURATION_SECONDS * 1000;
 
   useEffect(() => {
     if (rotationPoolSize <= 1) return;
 
     const timer = window.setInterval(() => {
       setHeroIndexSeed((prev) => prev + 1);
-    }, HERO_ROTATE_INTERVAL_MS);
+    }, heroRotateIntervalMs);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [rotationPoolSize]);
-
-  const randomMovie = useMemo(() => {
-    if (!rotationPool.length) return undefined;
-
-    const preferredIndex = heroIndexSeed % rotationPool.length;
-    return rotationPool[preferredIndex];
-  }, [heroIndexSeed, rotationPool]);
+  }, [heroRotateIntervalMs, rotationPoolSize]);
 
   const mediaPoster = useMemo(() => {
     return resolveBannerSource(randomMovie);
   }, [randomMovie]);
 
   const directVideoUrl = useMemo(() => {
-    const trailerRaw = String(randomMovie?.trailerUrl ?? "").trim();
+    const trailerRaw = String(randomMovie?.trailerUrl || "").trim();
     if (DIRECT_VIDEO_PATTERN.test(trailerRaw)) return trailerRaw;
 
     const videoRaw = String(randomMovie?.videoUrl ?? "").trim();
@@ -320,14 +360,13 @@ const Billboard: React.FC = () => {
   const youtubeHeroUrl = useMemo(() => {
     if (!ENABLE_YOUTUBE_HERO) return "";
     const trailerEmbed = toYoutubeHeroEmbed(randomMovie?.trailerUrl);
-    if (trailerEmbed) return trailerEmbed;
-    return toYoutubeHeroEmbed(randomMovie?.videoUrl);
+    const baseEmbed = trailerEmbed || toYoutubeHeroEmbed(randomMovie?.videoUrl);
+    if (!baseEmbed) return "";
+    return baseEmbed;
   }, [randomMovie?.trailerUrl, randomMovie?.videoUrl]);
+  const activeMediaKey = `${String(randomMovie?.id || "none")}::${directVideoUrl || youtubeHeroUrl || mediaPoster}`;
   const canToggleHeroAudio = Boolean(directVideoUrl || youtubeHeroUrl);
-
-  useEffect(() => {
-    setHeroMuted(true);
-  }, [randomMovie?.id]);
+  const activeMovieRatio = randomMovie ? mediaRatioByMovieId[String(randomMovie.id)] : undefined;
 
   const sendYoutubeHeroCommand = useCallback((func: string, args: unknown[] = []) => {
     const frame = youtubeHeroRef.current;
@@ -365,7 +404,35 @@ const Billboard: React.FC = () => {
     setHeroMuted((prev) => !prev);
   }, [canToggleHeroAudio]);
 
-  const activeMovieRatio = randomMovie ? mediaRatioByMovieId[String(randomMovie.id)] : undefined;
+  const goToHeroIndex = useCallback((targetIndex: number) => {
+    if (rotationPoolSize <= 0) return;
+    const normalizedTarget = ((targetIndex % rotationPoolSize) + rotationPoolSize) % rotationPoolSize;
+    setHeroIndexSeed((prev) => {
+      const current = ((prev % rotationPoolSize) + rotationPoolSize) % rotationPoolSize;
+      return prev + (normalizedTarget - current);
+    });
+  }, [rotationPoolSize]);
+
+  const goToPrevHero = useCallback(() => {
+    if (rotationPoolSize <= 1) return;
+    setHeroIndexSeed((prev) => prev - 1);
+  }, [rotationPoolSize]);
+
+  const goToNextHero = useCallback(() => {
+    if (rotationPoolSize <= 1) return;
+    setHeroIndexSeed((prev) => prev + 1);
+  }, [rotationPoolSize]);
+
+  const handleDirectHeroTimeUpdate = useCallback(() => {
+    const player = directHeroRef.current;
+    if (!player) return;
+    if (player.currentTime < HERO_DEFAULT_TRAILER_DURATION_SECONDS) return;
+    player.currentTime = 0;
+    if (!player.paused) {
+      void player.play().catch(() => {});
+    }
+  }, []);
+
   const useContainForPoster = !directVideoUrl
     && !youtubeHeroUrl
     && typeof activeMovieRatio === "number"
@@ -430,8 +497,9 @@ const Billboard: React.FC = () => {
 
         {directVideoUrl ? (
           <video
+            key={activeMediaKey}
             ref={directHeroRef}
-            className="absolute inset-0 w-full h-full z-[1]"
+            className="pointer-events-none absolute inset-0 w-full h-full z-[1] brightness-[1.08] contrast-[1.06] saturate-[1.06]"
             style={HERO_MEDIA_STYLE}
             autoPlay
             muted={heroMuted}
@@ -440,12 +508,14 @@ const Billboard: React.FC = () => {
             preload="metadata"
             poster={mediaPoster}
             src={directVideoUrl}
+            onTimeUpdate={handleDirectHeroTimeUpdate}
           />
         ) : youtubeHeroUrl ? (
-          <div className="absolute inset-0 w-full h-full z-[1] overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 w-full h-full z-[1] overflow-hidden">
             <iframe
+              key={activeMediaKey}
               ref={youtubeHeroRef}
-              className="absolute -top-[11%] -left-[8%] h-[122%] w-[116%]"
+              className="pointer-events-none absolute -top-[11%] -left-[8%] h-[122%] w-[116%] brightness-[1.08] contrast-[1.06] saturate-[1.06]"
               src={youtubeHeroUrl}
               title={randomMovie.title || "Hero trailer"}
               allow="autoplay; encrypted-media; picture-in-picture"
@@ -457,41 +527,88 @@ const Billboard: React.FC = () => {
           <img
             src={mediaPoster}
             alt={randomMovie.title || "Poster"}
-            className="absolute inset-0 w-full h-full z-[1]"
+            className="absolute inset-0 w-full h-full z-[1] brightness-[1.08] contrast-[1.06] saturate-[1.06]"
             style={posterStyle}
           />
         )}
 
         <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-transparent via-transparent to-transparent" />
-        <div className="absolute inset-x-0 top-[68px] md:top-[76px] bottom-0 bg-gradient-to-r from-black/78 via-black/40 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-56 md:h-72 bg-gradient-to-t from-black via-black/75 to-transparent" />
+        <div className="absolute inset-x-0 top-[68px] md:top-[76px] bottom-0 bg-gradient-to-r from-black/62 via-black/28 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-56 md:h-72 bg-gradient-to-t from-black/88 via-black/58 to-transparent" />
         {canToggleHeroAudio ? (
-          <button
-            type="button"
-            onClick={toggleHeroMute}
-            className="absolute right-4 md:right-8 bottom-[30%] z-20 h-14 w-14 rounded-full bg-black/70 text-white backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/85 transition-all duration-200"
-            aria-label={heroMuted ? "Bat am thanh banner" : "Tat am thanh banner"}
-            title={heroMuted ? "Bat am thanh banner" : "Tat am thanh banner"}
-          >
-            {heroMuted ? <IoVolumeMuteOutline size={24} /> : <IoVolumeHighOutline size={24} />}
-          </button>
+          <div className="group absolute right-4 md:right-8 bottom-[30%] z-20 flex flex-col items-center gap-2">
+            <div className="pointer-events-none rounded-md bg-black/80 px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+              {heroMuted ? "Bật tiếng" : "Tắt tiếng"}
+            </div>
+            <button
+              type="button"
+              onClick={toggleHeroMute}
+              className={`h-14 w-14 rounded-full backdrop-blur-sm border flex items-center justify-center transition-all duration-200 hover:scale-105 ${
+                heroMuted
+                  ? "bg-black/70 border-white/20 text-white hover:bg-red-500/30 hover:border-red-300/60 hover:text-red-200"
+                  : "bg-black/70 border-white/20 text-white hover:bg-red-500/30 hover:border-red-300/60 hover:text-red-200"
+              }`}
+              aria-label={heroMuted ? "Bật âm thanh banner" : "Tắt âm thanh banner"}
+            >
+              {heroMuted ? <IoVolumeMuteOutline size={24} /> : <IoVolumeHighOutline size={24} />}
+            </button>
+          </div>
         ) : null}
 
-        <div className="absolute left-4 md:left-16 bottom-[25%] md:bottom-[30%] z-10 max-w-[90%] lg:max-w-[45%]">
+        {rotationPoolSize > 1 ? (
+          <div className="absolute right-4 md:right-8 bottom-8 md:bottom-10 z-20 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-1.5 backdrop-blur-sm">
+              {rotationPool.map((movie, index) => {
+                const isActive = index === currentHeroIndex;
+                return (
+                  <button
+                    key={`hero-dot-${String(movie?.id || index)}`}
+                    type="button"
+                    onClick={() => goToHeroIndex(index)}
+                    className={`h-2 rounded-full transition-all duration-200 ${
+                      isActive ? "w-8 bg-white" : "w-3.5 bg-white/40 hover:bg-white/70"
+                    }`}
+                    aria-label={`Chuyen den banner ${index + 1}`}
+                  />
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={goToPrevHero}
+              className="h-10 w-10 rounded-full border border-white/80 bg-black/40 text-white flex items-center justify-center hover:bg-white/10 transition-all duration-200"
+              aria-label="Banner truoc"
+            >
+              <BsChevronLeft size={22} />
+            </button>
+
+            <button
+              type="button"
+              onClick={goToNextHero}
+              className="h-10 w-10 rounded-full border border-white/80 bg-black/40 text-white flex items-center justify-center hover:bg-white/10 transition-all duration-200"
+              aria-label="Banner tiep theo"
+            >
+              <BsChevronRight size={22} />
+            </button>
+          </div>
+        ) : null}
+
+        <div className="absolute left-6 md:left-20 lg:left-24 bottom-[25%] md:bottom-[30%] z-10 max-w-[90%] lg:max-w-[45%]">
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs md:text-sm text-white/85">
             {randomMovie.genre && (
               <span className="rounded bg-white/15 px-2 py-1">
                 {randomMovie.genre}
               </span>
             )}
-            {randomMovie.duration ? <span>{randomMovie.duration} phut</span> : null}
+            {randomMovie.duration ? <span>{randomMovie.duration} phút</span> : null}
           </div>
 
           <h1 className="text-white text-3xl md:text-5xl lg:text-6xl font-bold drop-shadow-2xl leading-tight mb-3 md:mb-5">
             {randomMovie.title}
           </h1>
 
-          <p className="text-white text-sm md:text-base lg:text-lg drop-shadow-xl line-clamp-3 md:line-clamp-4 leading-relaxed mb-2 md:mb-3">
+          <p className="text-white text-sm md:text-base lg:text-lg drop-shadow-xl line-clamp-3 leading-relaxed mb-2 md:mb-3">
             {randomMovie.description}
           </p>
 
@@ -502,16 +619,19 @@ const Billboard: React.FC = () => {
               onClick={clickInfoHandler}
               data-id={randomMovie.id}
               className="
+                group
                 bg-white/30 text-white backdrop-blur-sm
                 rounded-md py-2 md:py-2.5 px-4 md:px-6
                 text-sm lg:text-base font-semibold
                 flex items-center gap-2
                 hover:bg-white/40 transition-all duration-200
+                hover:-translate-y-1
+                hover:shadow-[0_12px_26px_rgba(0,0,0,0.35)]
                 shadow-lg
               "
             >
-              <AiOutlineInfoCircle className="text-lg md:text-xl" />
-              More Info
+              <AiOutlineInfoCircle className="text-lg md:text-xl transition-colors duration-200 group-hover:text-red-600" />
+              <span className="transition-colors duration-200 group-hover:text-red-600">More Info</span>
             </button>
           </div>
         </div>

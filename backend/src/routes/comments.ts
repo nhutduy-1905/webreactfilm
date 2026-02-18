@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
+import { sendDbError } from '../utils/dbError';
 
 const router = Router();
+const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
+
+const isValidObjectId = (value: unknown): value is string => (
+  typeof value === 'string' && OBJECT_ID_REGEX.test(value)
+);
 
 /**
  * @swagger
@@ -82,6 +88,14 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Comment content must be 1000 characters or less' });
     }
 
+    if (!isValidObjectId(movieId)) {
+      return res.status(400).json({ error: 'Invalid movieId' });
+    }
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
     // Check if movie exists
     const movie = await prisma.movie.findUnique({
       where: { id: movieId }
@@ -109,7 +123,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error creating comment:', error);
-    res.status(500).json({ error: 'Failed to create comment', details: error.message });
+    return sendDbError(res, error, 'Failed to create comment');
   }
 });
 
@@ -160,6 +174,10 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/movie/:movieId', async (req: Request, res: Response) => {
   try {
     const { movieId } = req.params;
+    if (!isValidObjectId(movieId)) {
+      return res.status(400).json({ error: 'Invalid movieId' });
+    }
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
@@ -196,11 +214,11 @@ router.get('/movie/:movieId', async (req: Request, res: Response) => {
       comments,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.max(1, Math.ceil(total / limit))
     });
   } catch (error: any) {
     console.error('Error fetching comments:', error);
-    res.status(500).json({ error: 'Failed to fetch comments', details: error.message });
+    return sendDbError(res, error, 'Failed to fetch comments');
   }
 });
 
@@ -271,11 +289,11 @@ router.get('/pending', async (req: Request, res: Response) => {
       comments,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.max(1, Math.ceil(total / limit))
     });
   } catch (error: any) {
     console.error('Error fetching pending comments:', error);
-    res.status(500).json({ error: 'Failed to fetch pending comments', details: error.message });
+    return sendDbError(res, error, 'Failed to fetch pending comments');
   }
 });
 
@@ -313,6 +331,9 @@ router.get('/pending', async (req: Request, res: Response) => {
 router.patch('/:id/approve', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid comment id' });
+    }
 
     const comment = await prisma.comment.findUnique({
       where: { id }
@@ -333,7 +354,7 @@ router.patch('/:id/approve', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error approving comment:', error);
-    res.status(500).json({ error: 'Failed to approve comment', details: error.message });
+    return sendDbError(res, error, 'Failed to approve comment');
   }
 });
 
@@ -366,6 +387,9 @@ router.patch('/:id/approve', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid comment id' });
+    }
 
     const comment = await prisma.comment.findUnique({
       where: { id }
@@ -382,7 +406,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     res.json({ message: 'Comment deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting comment:', error);
-    res.status(500).json({ error: 'Failed to delete comment', details: error.message });
+    return sendDbError(res, error, 'Failed to delete comment');
   }
 });
 

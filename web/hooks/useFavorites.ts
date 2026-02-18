@@ -5,11 +5,12 @@ import type { MovieItem } from "./useMovieList";
 import useCurrentUser from "./useCurrentUser";
 import useMovieList from "./useMovieList";
 
-const useFavorites = () => {
-  const { data: currentUser } = useCurrentUser();
-  const { data: movieList = [] } = useMovieList();
+const useFavorites = (enabled = true) => {
+  const { data: currentUser } = useCurrentUser(enabled);
+  const { data: movieList = [] } = useMovieList(enabled);
 
-  const { data, error, isLoading, mutate } = useSWR<MovieItem[]>("/api/favorites", fetcher, {
+  const key = enabled ? "/api/favorites" : null;
+  const { data, error, isLoading, mutate } = useSWR<MovieItem[]>(key, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     shouldRetryOnError: false,

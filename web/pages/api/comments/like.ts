@@ -10,6 +10,15 @@ const getPrisma = () => {
   return prisma as any;
 };
 
+const toStringArray = (value: unknown): string[] => (
+  Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : []
+);
+
+const toNonNegativeInt = (value: unknown): number => {
+  const num = Number(value);
+  return Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
+};
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -27,6 +36,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!commentId || !action) {
       return res.status(400).json({ error: 'Missing commentId or action' });
     }
+    if (action !== 'like' && action !== 'dislike') {
+      return res.status(400).json({ error: 'Invalid action. Must be like or dislike' });
+    }
 
     const db = getPrisma();
     const comment = await db.comment.findUnique({
@@ -38,10 +50,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const userId = currentUser.id;
-    let likedBy = comment.likedBy || [];
-    let dislikedBy = comment.dislikedBy || [];
-    let likes = comment.likes || 0;
-    let dislikes = comment.dislikes || 0;
+    let likedBy = toStringArray(comment.likedBy);
+    let dislikedBy = toStringArray(comment.dislikedBy);
+    let likes = toNonNegativeInt(comment.likes);
+    let dislikes = toNonNegativeInt(comment.dislikes);
 
     if (action === 'like') {
       if (likedBy.includes(userId)) {
@@ -85,7 +97,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     });
 
-    return res.json(updatedComment);
+    return res.json({
+      ...updatedComment,
+      likes: toNonNegativeInt(updatedComment.likes),
+      dislikes: toNonNegativeInt(updatedComment.dislikes),
+      likedBy: toStringArray(updatedComment.likedBy),
+      dislikedBy: toStringArray(updatedComment.dislikedBy),
+    });
   } catch (error: any) {
     console.error('Error updating comment like/dislike:', error);
     return res.status(500).json({ error: 'Failed to update' });

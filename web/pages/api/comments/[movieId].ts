@@ -21,6 +21,15 @@ const normalizeBackendComment = (raw: any) => ({
   replyCount: 0,
 });
 
+const normalizeCommentRecord = (raw: any) => ({
+  ...raw,
+  id: String(raw?.id ?? raw?._id ?? ''),
+  likes: Number(raw?.likes ?? 0),
+  dislikes: Number(raw?.dislikes ?? 0),
+  likedBy: Array.isArray(raw?.likedBy) ? raw.likedBy : [],
+  dislikedBy: Array.isArray(raw?.dislikedBy) ? raw.dislikedBy : [],
+});
+
 const sortComments = (comments: any[], sort: unknown) => {
   if (sort === 'oldest') {
     return [...comments].sort(
@@ -124,10 +133,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           orderBy: { createdAt: 'asc' },
         });
 
+        const normalizedReplies = replies.map(normalizeCommentRecord);
+        const normalizedComment = normalizeCommentRecord(comment);
+
         return {
-          ...comment,
-          replies,
-          replyCount: replies.length,
+          ...normalizedComment,
+          replies: normalizedReplies,
+          replyCount: normalizedReplies.length,
         };
       })
     );
@@ -137,7 +149,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         comments: commentsWithReplies,
         total,
         page,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       });
     }
 
@@ -156,7 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       comments: commentsWithReplies,
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
     console.error('Error fetching comments:', error);

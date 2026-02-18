@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import Head from "next/head";
 import { AiFillStar, AiOutlineArrowLeft, AiOutlineClose, AiOutlineHeart, AiOutlineStar } from "react-icons/ai";
 import { BiCommentDetail, BiRedo, BiShareAlt, BiUndo } from "react-icons/bi";
-import { BsBell, BsChevronDown, BsInstagram, BsLink45Deg, BsPauseFill, BsPlayFill, BsSearch, BsWhatsapp } from "react-icons/bs";
-import { SiFacebook, SiGmail, SiX, SiZalo } from "react-icons/si";
+import { BsBell, BsChevronDown, BsPauseFill, BsPlayFill, BsSearch } from "react-icons/bs";
+
 import { IoSettingsOutline, IoVolumeHighOutline, IoVolumeMuteOutline } from "react-icons/io5";
 import { MdClosedCaption } from "react-icons/md";
 import { MdFullscreen, MdFullscreenExit } from "react-icons/md";
@@ -47,7 +48,20 @@ const ALLOW_YOUTUBE_WATCH_EMBED = (
   process.env.NEXT_PUBLIC_ALLOW_YOUTUBE_WATCH_EMBED
   ?? "1"
 ) === "1";
+const WATCH_AUTOPLAY_MUTED = (process.env.NEXT_PUBLIC_WATCH_AUTOPLAY_MUTED ?? "0") === "1";
+const parsedWatchYoutubeEndOverlaySeconds = Number(process.env.NEXT_PUBLIC_WATCH_YT_END_OVERLAY_SECONDS ?? "0.8");
+const WATCH_YOUTUBE_END_OVERLAY_SECONDS = Number.isFinite(parsedWatchYoutubeEndOverlaySeconds)
+  ? Math.max(0, parsedWatchYoutubeEndOverlaySeconds)
+  : 0.8;
+const SHARE_PUBLIC_BASE_URL = (process.env.NEXT_PUBLIC_SHARE_BASE_URL ?? "").trim();
+const WATCH_INTRO_COMPLETED_KEYS = new Set<string>();
 type YoutubePlaybackQuality = "auto" | "hd1080" | "hd720" | "large" | "medium" | "small" | "tiny";
+type DirectSubtitleTrack = {
+  src: string;
+  label: string;
+  srclang: string;
+  isDefault: boolean;
+};
 
 const YOUTUBE_QUALITY_OPTIONS: Array<{ value: YoutubePlaybackQuality; label: string }> = [
   { value: "auto", label: "Tự động" },
@@ -135,9 +149,10 @@ function formatRatingCountLabel(count: number): string {
 
 function applyYoutubePlayerParams(url: URL) {
   // Keep YouTube embed params minimal for compatibility.
-  // Autoplay after Intro; mute first to satisfy browser autoplay policy.
-  url.searchParams.set("autoplay", "1");
-  url.searchParams.set("mute", "0");
+  // Support both autoplay and manual-start modes.
+  const shouldAutoplay = url.searchParams.get("autoplay") !== "0";
+  url.searchParams.set("autoplay", shouldAutoplay ? "1" : "0");
+  url.searchParams.set("mute", WATCH_AUTOPLAY_MUTED ? "1" : "0");
   url.searchParams.set("playsinline", "1");
   url.searchParams.set("rel", "0");
   url.searchParams.set("enablejsapi", "1");
@@ -152,11 +167,12 @@ function applyYoutubePlayerParams(url: URL) {
   }
 }
 
-function toYoutubeEmbed(raw: string): string {
+function toYoutubeEmbed(raw: string, autoplay = true): string {
   try {
     const u = new URL(raw.trim());
     const buildEmbed = (id: string) => {
       const embed = new URL(`https://www.youtube.com/embed/${id}`);
+      embed.searchParams.set("autoplay", autoplay ? "1" : "0");
       applyYoutubePlayerParams(embed);
       return embed.toString();
     };
@@ -203,10 +219,87 @@ function isYoutubeUrl(raw: string): boolean {
 function isLikelyDirectVideoUrl(raw: string): boolean {
   const value = String(raw || "").trim();
   if (!value) return false;
+  if (/ref_=tt_ov_i/i.test(value)) return false;
   if (DIRECT_VIDEO_PATTERN.test(value)) return true;
   if (isYoutubeUrl(value)) return false;
-  // Accept HTTP(S) URLs without extension (many CDN signed URLs are like this).
-  return /^https?:\/\//i.test(value);
+  // Accept HTTP(S) URLs without extension (many CDN signed URLs are like this),
+  // but reject known non-media pages.
+  if (!/^https?:\/\//i.test(value)) return false;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.hostname.includes("imdb.com")) return false;
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
+function toLanguageCode(raw: string): string {
+  const value = String(raw || "").trim().toLowerCase();
+  if (!value) return "vi";
+  if (value.includes("viet")) return "vi";
+  if (value.includes("anh") || value.includes("english")) return "en";
+  if (value.includes("korean") || value.includes("han")) return "ko";
+  if (value.includes("japan") || value.includes("nhat")) return "ja";
+  if (value.includes("chinese") || value.includes("trung")) return "zh";
+  return value.slice(0, 2);
+}
+
+function buildDirectSubtitleTracks(movie: unknown): DirectSubtitleTrack[] {
+  if (!movie || typeof movie !== "object") return [];
+  const record = movie as Record<string, unknown>;
+
+  const fromSubtitleTracks = Array.isArray(record.subtitleTracks) ? record.subtitleTracks : [];
+  const fromSubtitleUrls = Array.isArray(record.subtitleUrls) ? record.subtitleUrls : [];
+  const fromSubtitles = Array.isArray(record.subtitles) ? record.subtitles : [];
+
+  const combined = [...fromSubtitleTracks, ...fromSubtitleUrls, ...fromSubtitles];
+  const results: DirectSubtitleTrack[] = [];
+  const seenSrc = new Set<string>();
+
+  combined.forEach((item, index) => {
+    if (item && typeof item === "object") {
+      const data = item as Record<string, unknown>;
+      const src = String(data.src || data.url || "").trim();
+      if (!src || seenSrc.has(src)) return;
+      if (!/^https?:\/\//i.test(src) && !src.startsWith("/")) return;
+      seenSrc.add(src);
+      const label = String(data.label || data.language || `Subtitle ${results.length + 1}`).trim();
+      const srclang = toLanguageCode(String(data.srclang || data.lang || label));
+      const isDefault = Boolean(data.default ?? index === 0);
+      results.push({ src, label, srclang, isDefault });
+      return;
+    }
+
+    if (typeof item !== "string") return;
+    const raw = item.trim();
+    if (!raw) return;
+
+    let label = "";
+    let src = "";
+    if (raw.includes("|")) {
+      const [left, right] = raw.split("|", 2);
+      label = String(left || "").trim();
+      src = String(right || "").trim();
+    } else if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) {
+      src = raw;
+    }
+
+    if (!src || seenSrc.has(src)) return;
+    if (!/\.(vtt|srt|ass|ssa|ttml|dfxp)(\?.*)?$/i.test(src)) return;
+    seenSrc.add(src);
+    const fallbackLabel = label || `Subtitle ${results.length + 1}`;
+    results.push({
+      src,
+      label: fallbackLabel,
+      srclang: toLanguageCode(fallbackLabel),
+      isDefault: index === 0,
+    });
+  });
+
+  return results;
 }
 
 function withYoutubeStart(embedUrl: string, startSeconds: number): string {
@@ -229,9 +322,15 @@ function withYoutubeStart(embedUrl: string, startSeconds: number): string {
   }
 }
 
+function isReloadNavigationInBrowser(): boolean {
+  // Keep autoplay behavior consistent on initial open and reload.
+  return false;
+}
+
 const WatchPage = () => {
   const router = useRouter();
   const { movieId, mode } = router.query as { movieId?: string; mode?: string };
+  const shouldStartPausedAfterReload = useMemo(() => isReloadNavigationInBrowser(), []);
 
   const [completedIntroKey, setCompletedIntroKey] = useState("");
   const [headerMode, setHeaderMode] = useState<"brand" | "title">("brand");
@@ -257,9 +356,9 @@ const WatchPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareAtCurrentTime, setShareAtCurrentTime] = useState(false);
+  const [showYoutubeEndOverlay, setShowYoutubeEndOverlay] = useState(false);
+  const [showReloadPreviewOverlay, setShowReloadPreviewOverlay] = useState(shouldStartPausedAfterReload);
+  const [showPauseMaskOverlay, setShowPauseMaskOverlay] = useState(false);
 
   const lastPlaybackTimeRef = useRef(0);
   const youtubeFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -280,18 +379,20 @@ const WatchPage = () => {
   const chosenUrl = isTrailerMode ? trailerUrl : movieUrl;
 
   const introKey = useMemo(() => {
-    if (!validMovieId || !chosenUrl || INTRO_DURATION_MS <= 0) return "";
-    return `${validMovieId}:${mode || "movie"}:${chosenUrl}`;
+    if (!validMovieId || !chosenUrl) return "";
+    return `${validMovieId}:${mode || "movie"}`;
   }, [validMovieId, chosenUrl, mode]);
 
-  const showPlaybackIntro = Boolean(introKey) && completedIntroKey !== introKey;
+  const showPlaybackIntro = Boolean(introKey)
+    && completedIntroKey !== introKey
+    && !WATCH_INTRO_COMPLETED_KEYS.has(introKey);
   const playbackSourceUrl = showPlaybackIntro ? "" : chosenUrl;
 
   const isDirectVideo = useMemo(() => isLikelyDirectVideoUrl(playbackSourceUrl), [playbackSourceUrl]);
   const trailerEmbedUrl = useMemo(() => {
     if (!playbackSourceUrl || !ALLOW_YOUTUBE_WATCH_EMBED) return "";
-    return toYoutubeEmbed(playbackSourceUrl);
-  }, [playbackSourceUrl]);
+    return toYoutubeEmbed(playbackSourceUrl, !shouldStartPausedAfterReload);
+  }, [playbackSourceUrl, shouldStartPausedAfterReload]);
   const fallbackDurationSeconds = useMemo(() => {
     const rawDuration = pickFirstFiniteNumber(movie, ["duration", "runtime", "movieDuration"]);
     if (!rawDuration || rawDuration <= 0) return 0;
@@ -307,6 +408,10 @@ const WatchPage = () => {
   const playbackEmbedUrl = useMemo(() => trailerEmbedUrl, [trailerEmbedUrl]);
   const isYouTubeSource = useMemo(() => isYoutubeUrl(playbackSourceUrl), [playbackSourceUrl]);
   const isPlayableSurface = Boolean(playbackSourceUrl) && (isDirectVideo || Boolean(playbackEmbedUrl));
+  const directSubtitleTracks = useMemo(() => buildDirectSubtitleTracks(movie), [movie]);
+  const canToggleCaptions = isDirectVideo
+    ? directSubtitleTracks.length > 0
+    : Boolean(playbackEmbedUrl);
 
   const rawViewCount = useMemo(() => {
     return pickFirstFiniteNumber(movie, ["viewCount", "views", "view_count"]);
@@ -345,31 +450,52 @@ const WatchPage = () => {
     () => formatRatingCountLabel(ratingCount),
     [ratingCount]
   );
+  const sharePath = useMemo(() => {
+    if (!validMovieId) return "/watch";
+    return isTrailerMode ? `/watch/${validMovieId}?mode=trailer` : `/watch/${validMovieId}`;
+  }, [isTrailerMode, validMovieId]);
+  const shareOrigin = useMemo(() => {
+    if (SHARE_PUBLIC_BASE_URL) {
+      try {
+        return new URL(SHARE_PUBLIC_BASE_URL).origin;
+      } catch {
+        // fallback below
+      }
+    }
+    if (typeof window !== "undefined") {
+      return window.location.origin;
+    }
+    return "";
+  }, []);
   const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const safePath = router.asPath || (validMovieId ? `/watch/${validMovieId}` : "/watch");
-    return `${window.location.origin}${safePath}`;
-  }, [router.asPath, validMovieId]);
+    if (!shareOrigin) return "";
+    return `${shareOrigin}${sharePath}`;
+  }, [shareOrigin, sharePath]);
   const shareTitle = useMemo(
     () => String(movie?.title || "Nextflix"),
     [movie?.title]
   );
-  const shareStartSeconds = useMemo(
-    () => Math.max(0, Math.floor(playerCurrentTime || 0)),
-    [playerCurrentTime]
+  const shareDescription = useMemo(
+    () => String(movie?.description || "Xem phim trên Nextflix").trim(),
+    [movie?.description]
   );
-  const effectiveShareUrl = useMemo(() => {
-    if (!shareUrl) return "";
-    if (!shareAtCurrentTime || shareStartSeconds <= 0) return shareUrl;
-
-    try {
-      const parsed = new URL(shareUrl);
-      parsed.searchParams.set("t", String(shareStartSeconds));
-      return parsed.toString();
-    } catch {
-      return shareUrl;
-    }
-  }, [shareAtCurrentTime, shareStartSeconds, shareUrl]);
+  const shareImageRaw = useMemo(
+    () => pickFirstNonEmptyString(movie, ["backdropUrl", "thumbnailUrl", "imageUrl", "posterUrl"]),
+    [movie]
+  );
+  const shareImageUrl = useMemo(() => {
+    if (!shareImageRaw) return "";
+    if (/^https?:\/\//i.test(shareImageRaw)) return shareImageRaw;
+    if (!shareOrigin) return "";
+    const normalizedPath = shareImageRaw.startsWith("/") ? shareImageRaw : `/${shareImageRaw}`;
+    return `${shareOrigin}${normalizedPath}`;
+  }, [shareImageRaw, shareOrigin]);
+  const playbackPreviewImage = useMemo(() => {
+    const raw = pickFirstNonEmptyString(movie, ["thumbnailUrl", "backdropUrl", "imageUrl", "posterUrl"]);
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return raw.startsWith("/") ? raw : `/${raw}`;
+  }, [movie]);
 
   const sendYoutubeCommand = useCallback((func: string, args: unknown[] = []) => {
     const iframe = youtubeFrameRef.current;
@@ -393,10 +519,24 @@ const WatchPage = () => {
     if (!iframe?.contentWindow || !playbackEmbedUrl || isDirectVideo) return;
     iframe.contentWindow.postMessage(JSON.stringify({ event: "listening", id: "watch-player" }), "*");
     sendYoutubeCommand("addEventListener", ["onStateChange"]);
+    sendYoutubeCommand("addEventListener", ["onReady"]);
     sendYoutubeCommand("addEventListener", ["onPlaybackRateChange"]);
     sendYoutubeCommand("addEventListener", ["onPlaybackQualityChange"]);
+    if (WATCH_AUTOPLAY_MUTED) {
+      sendYoutubeCommand("mute");
+    }
+    if (shouldStartPausedAfterReload) {
+      sendYoutubeCommand("seekTo", [0, true]);
+      sendYoutubeCommand("pauseVideo");
+      setPlayerCurrentTime(0);
+      setPlayerIsPlaying(false);
+      requestYoutubeSnapshot();
+      return;
+    }
+
+    sendYoutubeCommand("playVideo");
     requestYoutubeSnapshot();
-  }, [isDirectVideo, playbackEmbedUrl, requestYoutubeSnapshot, sendYoutubeCommand]);
+  }, [isDirectVideo, playbackEmbedUrl, requestYoutubeSnapshot, sendYoutubeCommand, shouldStartPausedAfterReload]);
 
   useEffect(() => {
     if (isDirectVideo || !playbackEmbedUrl) return;
@@ -537,21 +677,25 @@ const WatchPage = () => {
 
   const handlePlaybackIntroFinished = useCallback(() => {
     if (!introKey) return;
+    WATCH_INTRO_COMPLETED_KEYS.add(introKey);
     setCompletedIntroKey((prev) => (prev === introKey ? prev : introKey));
   }, [introKey]);
 
   useEffect(() => {
     setPlayerCurrentTime(0);
     setPlayerDuration(0);
-    setPlayerIsPlaying(true);
-    setPlayerIsMuted(false);
+    setPlayerIsPlaying(!shouldStartPausedAfterReload);
+    setPlayerIsMuted(WATCH_AUTOPLAY_MUTED && !isLikelyDirectVideoUrl(chosenUrl || ""));
     setCaptionsEnabled(false);
     setPlaybackRate(1);
     setPlaybackQuality("auto");
     setPlayerVolume(1);
     setShowSettingsPanel(false);
+    setShowYoutubeEndOverlay(false);
+    setShowReloadPreviewOverlay(shouldStartPausedAfterReload);
+    setShowPauseMaskOverlay(false);
     lastPlayerSyncAtRef.current = Date.now();
-  }, [chosenUrl, fallbackDurationSeconds, showPlaybackIntro]);
+  }, [chosenUrl, fallbackDurationSeconds, showPlaybackIntro, shouldStartPausedAfterReload]);
 
   useEffect(() => {
     if (isDirectVideo || !playbackEmbedUrl) return;
@@ -564,6 +708,20 @@ const WatchPage = () => {
     if (!isDirectVideo || !playbackSourceUrl || showPlaybackIntro) return;
     const player = directVideoRef.current;
     if (!player) return;
+
+    if (shouldStartPausedAfterReload) {
+      player.pause();
+      try {
+        player.currentTime = 0;
+      } catch {
+        // Ignore seek failures on some stream formats.
+      }
+      setPlayerCurrentTime(0);
+      setPlayerIsPlaying(false);
+      setShowReloadPreviewOverlay(true);
+      setShowPauseMaskOverlay(false);
+      return;
+    }
 
     let cancelled = false;
     const tryAutoPlay = async () => {
@@ -581,11 +739,19 @@ const WatchPage = () => {
       }
     };
 
+    const handleCanPlay = () => {
+      if (cancelled) return;
+      if (!player.paused) return;
+      void tryAutoPlay();
+    };
+
+    player.addEventListener("canplay", handleCanPlay);
     void tryAutoPlay();
     return () => {
       cancelled = true;
+      player.removeEventListener("canplay", handleCanPlay);
     };
-  }, [isDirectVideo, playbackSourceUrl, showPlaybackIntro]);
+  }, [isDirectVideo, playbackSourceUrl, showPlaybackIntro, shouldStartPausedAfterReload]);
 
   useEffect(() => {
     if (!validMovieId) return;
@@ -624,23 +790,6 @@ const WatchPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!showShareModal) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowShareModal(false);
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [showShareModal]);
-
-  useEffect(() => {
     const syncFullscreenState = () => {
       const activeElement = document.fullscreenElement || (document as any).webkitFullscreenElement;
       setIsFullscreen(Boolean(activeElement));
@@ -672,12 +821,37 @@ const WatchPage = () => {
 
       if (!payload) return;
       if (payload.event === "onReady") {
+        if (WATCH_AUTOPLAY_MUTED) {
+          sendYoutubeCommand("mute");
+        }
+        if (shouldStartPausedAfterReload) {
+          sendYoutubeCommand("seekTo", [0, true]);
+          sendYoutubeCommand("pauseVideo");
+          setPlayerCurrentTime(0);
+          setPlayerIsPlaying(false);
+          setShowReloadPreviewOverlay(true);
+          setShowPauseMaskOverlay(false);
+          requestYoutubeSnapshot();
+          return;
+        }
+        sendYoutubeCommand("playVideo");
         requestYoutubeSnapshot();
         return;
       }
       if (payload.event === "onStateChange") {
         const state = coerceNumber(payload.info);
-        if (state !== null) setPlayerIsPlaying(state === 1);
+        if (state !== null) {
+          setPlayerIsPlaying(state === 1);
+          if (state === 2) {
+            setShowPauseMaskOverlay(true);
+            setShowReloadPreviewOverlay(false);
+          }
+          if (state === 1) {
+            setShowPauseMaskOverlay(false);
+            setShowReloadPreviewOverlay(false);
+          }
+          setShowYoutubeEndOverlay(state === 0);
+        }
       }
       if (payload.event === "onPlaybackQualityChange") {
         const quality = normalizeYoutubeQuality(payload.info);
@@ -696,6 +870,14 @@ const WatchPage = () => {
       if (duration !== null && duration > 0) {
         setPlayerDuration(duration);
       }
+      if (
+        duration !== null
+        && duration > 0
+        && currentTime !== null
+        && currentTime >= Math.max(0, duration - WATCH_YOUTUBE_END_OVERLAY_SECONDS)
+      ) {
+        setShowYoutubeEndOverlay(true);
+      }
       const volumeValue = coerceNumber(info.volume);
       if (volumeValue !== null) {
         const normalized = volumeValue > 1 ? volumeValue / 100 : volumeValue;
@@ -704,6 +886,7 @@ const WatchPage = () => {
       const playerState = coerceNumber(info.playerState);
       if (playerState !== null) {
         setPlayerIsPlaying(playerState === 1);
+        if (playerState === 0) setShowYoutubeEndOverlay(true);
       }
       if (typeof info.muted === "boolean") {
         setPlayerIsMuted(info.muted);
@@ -726,7 +909,7 @@ const WatchPage = () => {
       window.clearInterval(timer);
       window.removeEventListener("message", onMessage);
     };
-  }, [initializeYoutubeBridge, isDirectVideo, playbackEmbedUrl, requestYoutubeSnapshot]);
+  }, [initializeYoutubeBridge, isDirectVideo, playbackEmbedUrl, requestYoutubeSnapshot, sendYoutubeCommand, shouldStartPausedAfterReload]);
 
   useEffect(() => {
     if (isDirectVideo || !playbackEmbedUrl) return;
@@ -760,6 +943,11 @@ const WatchPage = () => {
         // Some stream formats reject immediate seek.
       }
     }
+
+    const shouldShowCaptions = captionsEnabled && directSubtitleTracks.length > 0;
+    for (let i = 0; i < player.textTracks.length; i += 1) {
+      player.textTracks[i].mode = shouldShowCaptions ? "showing" : "hidden";
+    }
   };
 
   const handleDirectTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -769,11 +957,17 @@ const WatchPage = () => {
     if (WATCH_LOCK_PLAYER_CONTROLS) lastPlaybackTimeRef.current = current;
   };
 
-  const handleDirectPlay = () => setPlayerIsPlaying(true);
+  const handleDirectPlay = () => {
+    setPlayerIsPlaying(true);
+    setShowPauseMaskOverlay(false);
+    setShowReloadPreviewOverlay(false);
+  };
 
   const handleDirectPause = (event: React.SyntheticEvent<HTMLVideoElement>) => {
     if (!WATCH_LOCK_PLAYER_CONTROLS) {
       setPlayerIsPlaying(false);
+      setShowPauseMaskOverlay(true);
+      setShowReloadPreviewOverlay(false);
       return;
     }
 
@@ -817,17 +1011,38 @@ const WatchPage = () => {
       if (!player) return;
 
       if (player.paused) {
+        setShowPauseMaskOverlay(false);
+        setShowReloadPreviewOverlay(false);
         await player.play().catch(() => {});
       } else {
+        setShowPauseMaskOverlay(true);
+        setShowReloadPreviewOverlay(false);
         player.pause();
       }
       return;
     }
 
     if (!playbackEmbedUrl) return;
+    if (!playerIsPlaying) {
+      setShowPauseMaskOverlay(false);
+      setShowReloadPreviewOverlay(false);
+      setShowYoutubeEndOverlay(false);
+    } else {
+      setShowPauseMaskOverlay(true);
+      setShowReloadPreviewOverlay(false);
+    }
     sendYoutubeCommand(playerIsPlaying ? "pauseVideo" : "playVideo");
     setPlayerIsPlaying((prev) => !prev);
   };
+
+  const replayYoutubeVideo = useCallback(() => {
+    if (!playbackEmbedUrl || isDirectVideo) return;
+    setShowYoutubeEndOverlay(false);
+    sendYoutubeCommand("seekTo", [0, true]);
+    sendYoutubeCommand("playVideo");
+    setPlayerCurrentTime(0);
+    setPlayerIsPlaying(true);
+  }, [isDirectVideo, playbackEmbedUrl, sendYoutubeCommand]);
 
   const seekTo = (targetSeconds: number) => {
     const clamped = Math.max(0, Math.min(playerDuration || targetSeconds, targetSeconds));
@@ -896,6 +1111,8 @@ const WatchPage = () => {
   };
 
   const toggleCaptions = () => {
+    if (!canToggleCaptions) return;
+
     if (isDirectVideo) {
       const player = directVideoRef.current;
       if (!player) return;
@@ -1001,88 +1218,11 @@ const WatchPage = () => {
     window.open(url, "_blank", "noopener,noreferrer,width=760,height=680");
   }, []);
 
-  const openShareModal = useCallback(() => {
-    setShareCopied(false);
-    setShowShareModal(true);
-  }, []);
-
-  const closeShareModal = useCallback(() => {
-    setShowShareModal(false);
-  }, []);
-
   const handleShareFacebook = useCallback(() => {
-    if (!effectiveShareUrl) return;
-    openShareWindow(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(effectiveShareUrl)}`);
-    setShowShareModal(false);
-  }, [effectiveShareUrl, openShareWindow]);
-
-  const handleShareWhatsApp = useCallback(() => {
-    if (!effectiveShareUrl) return;
-    const text = `${shareTitle} ${effectiveShareUrl}`.trim();
-    openShareWindow(`https://wa.me/?text=${encodeURIComponent(text)}`);
-    setShowShareModal(false);
-  }, [effectiveShareUrl, openShareWindow, shareTitle]);
-
-  const handleShareX = useCallback(() => {
-    if (!effectiveShareUrl) return;
-    openShareWindow(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(effectiveShareUrl)}`
-    );
-    setShowShareModal(false);
-  }, [effectiveShareUrl, openShareWindow, shareTitle]);
-
-  const handleShareInstagram = useCallback(async () => {
-    if (!effectiveShareUrl) return;
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareTitle,
-          url: effectiveShareUrl,
-        });
-        setShowShareModal(false);
-        return;
-      } catch {
-        // Fallback to opening Instagram web if user cancels or share is unavailable.
-      }
-    }
-    openShareWindow("https://www.instagram.com/");
-    setShowShareModal(false);
-  }, [effectiveShareUrl, openShareWindow, shareTitle]);
-
-  const handleShareEmail = useCallback(() => {
-    if (!effectiveShareUrl || typeof window === "undefined") return;
-    const subject = encodeURIComponent(`Chia sẻ phim: ${shareTitle}`);
-    const body = encodeURIComponent(`${shareTitle}\n${effectiveShareUrl}`);
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
-    setShowShareModal(false);
-  }, [effectiveShareUrl, shareTitle]);
-
-  const handleShareZalo = useCallback(() => {
-    if (!effectiveShareUrl) return;
-    openShareWindow(`https://zalo.me/share?url=${encodeURIComponent(effectiveShareUrl)}`);
-    setShowShareModal(false);
-  }, [effectiveShareUrl, openShareWindow]);
-
-  const handleCopyShareLink = useCallback(async () => {
-    if (!effectiveShareUrl || typeof window === "undefined") return;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(effectiveShareUrl);
-      } else {
-        const input = document.createElement("textarea");
-        input.value = effectiveShareUrl;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        document.body.removeChild(input);
-      }
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 1800);
-    } catch {
-      setShareCopied(false);
-    }
-  }, [effectiveShareUrl]);
+    if (!shareUrl) return;
+    const facebookSharer = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(shareTitle)}`;
+    openShareWindow(facebookSharer);
+  }, [openShareWindow, shareTitle, shareUrl]);
 
   const scrollToComments = () => {
     commentAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1193,7 +1333,11 @@ const WatchPage = () => {
   );
 
   if (isLoading || !validMovieId) {
-    return <IntroN preferVideo videoUrl={BRAND_INTRO_URL} alt="Loading intro" />;
+    return (
+      <div className="min-h-screen w-screen bg-black flex items-center justify-center">
+        <p className="text-white/80 text-base md:text-lg">Đang tải phim...</p>
+      </div>
+    );
   }
 
   if (showPlaybackIntro) {
@@ -1209,7 +1353,23 @@ const WatchPage = () => {
   }
 
   return (
-    <div className="min-h-screen w-screen bg-black">
+    <>
+      <Head>
+        <title>{shareTitle ? `${shareTitle} | Nextflix` : "Nextflix"}</title>
+        <meta property="og:type" content="video.movie" />
+        <meta property="og:site_name" content="Nextflix" />
+        <meta property="og:title" content={shareTitle} />
+        <meta property="og:description" content={shareDescription} />
+        {shareUrl ? <meta property="og:url" content={shareUrl} /> : null}
+        {shareImageUrl ? <meta property="og:image" content={shareImageUrl} /> : null}
+        {shareImageUrl ? <meta property="og:image:secure_url" content={shareImageUrl} /> : null}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={shareTitle} />
+        <meta name="twitter:description" content={shareDescription} />
+        {shareImageUrl ? <meta name="twitter:image" content={shareImageUrl} /> : null}
+      </Head>
+
+      <div className="min-h-screen w-screen bg-black">
       <div className="fixed inset-x-0 top-0 z-40 h-[68px]">
         <nav
           className={`absolute inset-x-0 top-0 h-[68px] px-4 sm:px-12 py-4 bg-transparent transition-all duration-300 flex items-center ${
@@ -1266,7 +1426,7 @@ const WatchPage = () => {
             <video
               ref={directVideoRef}
               className="h-full w-full"
-              autoPlay
+              autoPlay={!shouldStartPausedAfterReload}
               muted={playerIsMuted}
               playsInline
               controls={false}
@@ -1284,7 +1444,18 @@ const WatchPage = () => {
               onEnded={() => setPlayerIsPlaying(false)}
               poster={movie?.thumbnailUrl}
               src={chosenUrl}
-            />
+            >
+              {directSubtitleTracks.map((track) => (
+                <track
+                  key={`${track.srclang}:${track.src}`}
+                  kind="subtitles"
+                  src={track.src}
+                  srcLang={track.srclang}
+                  label={track.label}
+                  default={track.isDefault}
+                />
+              ))}
+            </video>
           ) : playbackEmbedUrl ? (
             <div className="relative h-full w-full overflow-hidden bg-black">
               <iframe
@@ -1298,6 +1469,17 @@ const WatchPage = () => {
                 onLoad={initializeYoutubeBridge}
               />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/65 to-transparent" />
+              {showYoutubeEndOverlay ? (
+                <div className="absolute inset-0 z-20 bg-black/95 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={replayYoutubeVideo}
+                    className="inline-flex items-center justify-center rounded-md bg-white text-black px-6 py-2 text-sm font-semibold hover:bg-red-600 hover:text-white transition-colors"
+                  >
+                    Xem lại
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : isYouTubeSource && !ALLOW_YOUTUBE_WATCH_EMBED ? (
             <div className="h-full w-full flex flex-col items-center justify-center text-white text-center px-6 gap-3">
@@ -1312,6 +1494,21 @@ const WatchPage = () => {
             </div>
           )}
 
+          {showReloadPreviewOverlay && !showPlaybackIntro && isPlayableSurface ? (
+            <div className="pointer-events-none absolute inset-0 z-[9] bg-black">
+              {playbackPreviewImage ? (
+                <img
+                  src={playbackPreviewImage}
+                  alt={movie?.title || "Movie preview"}
+                  className="h-full w-full object-cover"
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          {showPauseMaskOverlay && !showPlaybackIntro && isPlayableSurface ? (
+            <div className="pointer-events-none absolute inset-0 z-[9] bg-black" />
+          ) : null}
           {isPlayableSurface ? (
             <button
               type="button"
@@ -1385,9 +1582,16 @@ const WatchPage = () => {
                   </div>
                   <button
                     onClick={toggleCaptions}
-                    className={`transition-colors ${captionsEnabled ? "text-red-500" : "text-white/75 hover:text-red-500"}`}
-                    title="Phụ đề Việt"
-                    aria-label="Phụ đề Việt"
+                    disabled={!canToggleCaptions}
+                    className={`transition-colors ${
+                      !canToggleCaptions
+                        ? "text-white/30 cursor-not-allowed"
+                        : captionsEnabled
+                          ? "text-red-500"
+                          : "text-white/75 hover:text-red-500"
+                    }`}
+                    title={!canToggleCaptions ? "Video này chưa có track phụ đề (.vtt)" : "Phụ đề"}
+                    aria-label={!canToggleCaptions ? "Video chưa hỗ trợ phụ đề" : "Phụ đề"}
                   >
                     <MdClosedCaption size={28} />
                   </button>
@@ -1528,160 +1732,28 @@ const WatchPage = () => {
 
                 <button
                   type="button"
-                  onClick={openShareModal}
+                  onClick={handleShareFacebook}
                   className="h-11 w-11 inline-flex items-center justify-center rounded-xl border border-white/15 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/35 transition-colors hover:border-white/45 hover:text-white"
                   title="Chia sẻ"
                   aria-label="Chia sẻ"
                 >
                   <BiShareAlt size={20} />
                 </button>
-
-                {shareCopied ? (
-                  <span className="rounded-lg border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300">
-                    Đã copy
-                  </span>
-                ) : null}
               </div>
             </div>
           </section>
-        ) : null}
-
-        {showShareModal ? (
-          <div
-            className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-[1.5px] p-3 sm:p-6"
-            onClick={closeShareModal}
-          >
-            <div
-              className="w-full max-w-[620px] overflow-hidden rounded-2xl border border-white/10 bg-[#1a1b1f] shadow-2xl shadow-black/65"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-                <div>
-                  <p className="text-white text-lg font-semibold">Đăng bài để chia sẻ</p>
-                  <p className="text-white/55 text-xs mt-1">Chia sẻ nhanh đến bạn bè</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeShareModal}
-                  className="text-white/75 hover:text-white transition-colors"
-                  aria-label="Đóng chia sẻ"
-                >
-                  <AiOutlineClose size={24} />
-                </button>
-              </div>
-
-              <div className="px-5 py-4">
-                <p className="text-white/85 text-sm mb-3">Chia sẻ</p>
-                <div className="flex items-start gap-4 overflow-x-auto pb-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyShareLink()}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-white/15 border border-white/20 inline-flex items-center justify-center">
-                      <BsLink45Deg size={20} />
-                    </span>
-                    <span className="text-xs">Nhúng</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareFacebook}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-white inline-flex items-center justify-center">
-                      <SiFacebook className="h-8 w-8 text-[#1877F2]" />
-                    </span>
-                    <span className="text-xs">Facebook</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareWhatsApp}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-[#25D366] inline-flex items-center justify-center">
-                      <BsWhatsapp size={24} />
-                    </span>
-                    <span className="text-xs">WhatsApp</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareX}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-white inline-flex items-center justify-center">
-                      <SiX className="h-8 w-8 text-black" />
-                    </span>
-                    <span className="text-xs">X</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareEmail}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-white inline-flex items-center justify-center">
-                      <SiGmail className="h-8 w-8 text-[#EA4335]" />
-                    </span>
-                    <span className="text-xs">Email</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareZalo}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-white inline-flex items-center justify-center">
-                      <SiZalo className="h-8 w-8 text-[#0068FF]" />
-                    </span>
-                    <span className="text-xs">Zalo</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleShareInstagram()}
-                    className="min-w-[74px] flex flex-col items-center gap-2 text-white/90"
-                  >
-                    <span className="h-14 w-14 rounded-full bg-gradient-to-br from-[#feda75] via-[#d62976] to-[#4f5bd5] inline-flex items-center justify-center">
-                      <BsInstagram size={22} />
-                    </span>
-                    <span className="text-xs">Instagram</span>
-                  </button>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-white/15 bg-black/35 p-2 flex items-center gap-2">
-                  <input
-                    value={effectiveShareUrl}
-                    readOnly
-                    className="w-full bg-transparent px-2 py-2 text-sm text-white/90 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyShareLink()}
-                    className="shrink-0 rounded-full bg-[#2ea2ff] px-4 py-2 text-sm font-semibold text-black hover:bg-[#56b3ff] transition-colors"
-                  >
-                    {shareCopied ? "Đã copy" : "Sao chép"}
-                  </button>
-                </div>
-
-                <label className="mt-4 inline-flex items-center gap-2 text-white/70 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={shareAtCurrentTime}
-                    onChange={(event) => setShareAtCurrentTime(event.target.checked)}
-                    className="h-4 w-4 rounded border-white/35 bg-transparent"
-                  />
-                  <span>Bắt đầu tại {formatTime(shareStartSeconds)}</span>
-                </label>
-              </div>
-            </div>
-          </div>
         ) : null}
 
         <div ref={commentAnchorRef}>
           {movieId && <CommentSection movieId={movieId} />}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
 export default WatchPage;
+
 
 

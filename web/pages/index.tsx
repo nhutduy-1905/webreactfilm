@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import type { NextPage, GetServerSidePropsContext } from "next";
 import { useRouter } from "next/router";
@@ -31,6 +31,8 @@ type HomePageProps = {
   showIntroOnLoad: boolean;
 };
 
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export async function getServerSideProps(context: GetServerSidePropsContext) {
   const session = await getServerSession(context.req, context.res, authOptions);
   if (!session) {
@@ -52,10 +54,12 @@ const Home: NextPage<HomePageProps> = ({ showIntroOnLoad }) => {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [showIntro, setShowIntro] = useState(showIntroOnLoad);
+  const [introResolved, setIntroResolved] = useState(showIntroOnLoad);
+  const shouldFetchHomeData = introResolved && !showIntro;
 
-  const { data: currentUser } = useCurrentUser();
-  const { data: moviesList = [], isLoading: moviesLoading, error: moviesError } = useMovieList();
-  const { data: favorites = [] } = useFavorites();
+  const { data: currentUser } = useCurrentUser(shouldFetchHomeData);
+  const { data: moviesList = [], isLoading: moviesLoading, error: moviesError } = useMovieList(shouldFetchHomeData);
+  const { data: favorites = [] } = useFavorites(shouldFetchHomeData);
 
   const toMovieState = (movie: MovieItem): movieState => ({
     id: String(movie.id ?? movie._id ?? ""),
@@ -109,19 +113,66 @@ const Home: NextPage<HomePageProps> = ({ showIntroOnLoad }) => {
     }
   }, [movieStateList, dispatch]);
 
-  useEffect(() => {
-    if (!showIntroOnLoad) return;
+  const hideIntro = useCallback(() => {
+    try {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("nextflix:home_intro_seen", "1");
+      }
+    } catch {
+      // Ignore sessionStorage errors.
+    }
 
-    const timer = setTimeout(() => {
-      setShowIntro(false);
+    setShowIntro(false);
+    if (showIntroOnLoad) {
       router.replace("/", undefined, { shallow: true });
-    }, INTRO_DURATION_MS);
+    }
+  }, [router, showIntroOnLoad]);
 
-    return () => clearTimeout(timer);
-  }, [showIntroOnLoad, router]);
+  useIsomorphicLayoutEffect(() => {
+    let shouldShowIntro = showIntroOnLoad;
+    if (typeof window !== "undefined") {
+      try {
+        const navEntries = window.performance.getEntriesByType("navigation");
+        const navEntry = navEntries[0] as PerformanceNavigationTiming | undefined;
+        const navType = navEntry?.type;
+        const isReload = navType === "reload";
+        const isNavigate = navType === "navigate" || !navType;
+        const hasShownIntro = window.sessionStorage.getItem("nextflix:home_intro_seen") === "1";
+        const legacyNavigation = (window.performance as any).navigation;
+        const legacyReload = legacyNavigation?.type === 1;
+
+        if (isReload || legacyReload || (!hasShownIntro && isNavigate)) {
+          shouldShowIntro = true;
+        }
+      } catch {
+        // Ignore unsupported performance APIs.
+      }
+    }
+
+    setShowIntro(shouldShowIntro);
+    setIntroResolved(true);
+  }, [showIntroOnLoad]);
+
+  useEffect(() => {
+    if (!showIntro) return;
+    const timer = window.setTimeout(() => hideIntro(), INTRO_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [hideIntro, showIntro]);
+
+  if (!introResolved) {
+    return <div className="w-screen h-screen bg-black" />;
+  }
 
   if (showIntro) {
-    return <IntroN preferVideo videoUrl={BRAND_INTRO_URL} alt="Brand intro" />;
+    return (
+      <IntroN
+        preferVideo
+        videoUrl={BRAND_INTRO_URL}
+        alt="Brand intro"
+        onFinished={hideIntro}
+        finishAfterMs={INTRO_DURATION_MS}
+      />
+    );
   }
 
   if (moviesLoading) {
@@ -161,3 +212,4 @@ const Home: NextPage<HomePageProps> = ({ showIntroOnLoad }) => {
 };
 
 export default Home;
+

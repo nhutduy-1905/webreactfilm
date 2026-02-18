@@ -79,9 +79,10 @@ const extractMovies = (payload: MoviesApiResponse | null | undefined): MovieItem
   return [];
 };
 
-const useMovieList = () => {
+const useMovieList = (enabled = true) => {
+  const key = enabled ? "/api/movies?limit=100" : null;
   const { data, error, isLoading, mutate } = useSWR<MoviesApiResponse>(
-    "/api/movies?limit=100",            // ✅ đúng endpoint list
+    key,
     fetcher,
     {
       revalidateOnFocus: false,
@@ -95,8 +96,8 @@ const useMovieList = () => {
   return { data: movies, isLoading, error, mutate };
 };
 
-export const useGetSingleMovie = () => {
-  const { data } = useMovieList();
+export const useGetSingleMovie = (enabled = true) => {
+  const { data } = useMovieList(enabled);
   const movies: MovieItem[] = Array.isArray(data) ? data : [];
 
   const movieMap = useMemo(() => {

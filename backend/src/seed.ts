@@ -1,4 +1,4 @@
-import prisma from './prisma';
+﻿import prisma from './prisma';
 
 const movies = [
   {
@@ -412,13 +412,37 @@ const movies = [
 ];
 
 async function main() {
-  console.log('🗑️  Deleting existing movies...');
-  await prisma.movie.deleteMany();
+  const shouldTruncate = process.argv.includes('--truncate');
+  if (shouldTruncate) {
+    console.log('[seed] Truncate mode: deleting existing movies...');
+    await prisma.movie.deleteMany();
+  } else {
+    console.log('[seed] Safe mode: keep existing movies and upsert by slug.');
+  }
 
-  console.log('🎬 Seeding 24 movies...');
-  let codeNum = 1;
+  const existingCodeRows = await prisma.movie.findMany({
+    select: { code: true },
+  });
+  const usedCodes = new Set(
+    existingCodeRows
+      .map((row) => String(row.code || '').trim())
+      .filter(Boolean)
+  );
+
+  let nextCodeNum = 1;
+  for (const code of usedCodes) {
+    const match = code.match(/^MOV-(\d+)$/);
+    if (!match) continue;
+    const parsed = parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed >= nextCodeNum) {
+      nextCodeNum = parsed + 1;
+    }
+  }
+
+  let created = 0;
+  let updated = 0;
+  console.log(`[seed] Processing ${movies.length} movies...`);
   for (const movie of movies) {
-    const code = `MOV-${String(codeNum).padStart(4, '0')}`;
     const slug = movie.title
       .toLowerCase()
       .normalize('NFD')
@@ -429,6 +453,32 @@ async function main() {
       .replace(/-+/g, '-')
       .trim();
 
+    const existing = await prisma.movie.findUnique({
+      where: { slug },
+      select: { id: true, code: true },
+    });
+
+    if (existing) {
+      await prisma.movie.update({
+        where: { id: existing.id },
+        data: {
+          ...movie,
+          slug,
+          releaseDate: movie.releaseDate,
+        },
+      });
+      updated++;
+      console.log(`  [updated] ${existing.code} - ${movie.title}`);
+      continue;
+    }
+
+    let code = '';
+    do {
+      code = `MOV-${String(nextCodeNum).padStart(4, '0')}`;
+      nextCodeNum++;
+    } while (usedCodes.has(code));
+    usedCodes.add(code);
+
     await prisma.movie.create({
       data: {
         ...movie,
@@ -437,16 +487,18 @@ async function main() {
         releaseDate: movie.releaseDate,
       },
     });
-    console.log(`  ✅ ${code} - ${movie.title}`);
-    codeNum++;
+    created++;
+    console.log(`  [created] ${code} - ${movie.title}`);
   }
 
-  console.log(`\n🎉 Seeded ${movies.length} movies successfully!`);
+  console.log(
+    `\n[seed] Done. source=${movies.length}, created=${created}, updated=${updated}, mode=${shouldTruncate ? 'truncate' : 'safe'}`
+  );
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seed error:', e);
+    console.error('[seed] Error:', e);
     process.exit(1);
   })
   .finally(async () => {

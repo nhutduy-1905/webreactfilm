@@ -10,6 +10,20 @@ import { prisma } from './prismadb';
 const providers: AuthOptions['providers'] = [];
 const githubClientId = process.env.GITHUB_CLIENT_ID || process.env.GITHUB_ID;
 const githubClientSecret = process.env.GITHUB_CLIENT_SECRET || process.env.GITHUB_SECRET;
+const parseBooleanEnv = (value: string | undefined, defaultValue: boolean) => {
+  if (value == null) return defaultValue;
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+
+  return defaultValue;
+};
+
+const allowOAuthEmailLinking = parseBooleanEnv(
+  process.env.NEXTAUTH_ALLOW_OAUTH_EMAIL_LINKING,
+  true
+);
 
 if (githubClientId && githubClientSecret) {
   const githubCallbackUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/auth/callback/github`;
@@ -18,6 +32,7 @@ if (githubClientId && githubClientSecret) {
     GithubProvider({
       clientId: githubClientId,
       clientSecret: githubClientSecret,
+      allowDangerousEmailAccountLinking: allowOAuthEmailLinking,
       token: {
         async request({ params }) {
           const response = await fetch('https://github.com/login/oauth/access_token', {
@@ -53,6 +68,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      allowDangerousEmailAccountLinking: allowOAuthEmailLinking,
     })
   );
 }

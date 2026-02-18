@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
+import { sendDbError } from '../utils/dbError';
 
 const router = Router();
+const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
+
+const isValidObjectId = (value: unknown): value is string => (
+  typeof value === 'string' && OBJECT_ID_REGEX.test(value)
+);
 
 type CommentStatus = 'all' | 'pending' | 'approved' | 'rejected';
 
@@ -71,7 +77,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('GET /api/comments/admin error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -80,6 +86,9 @@ router.patch('/', async (req: Request, res: Response) => {
     const id = String((req.body as { id?: string })?.id || '').trim();
     if (!id) {
       return res.status(400).json({ error: 'Comment ID is required' });
+    }
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid comment id' });
     }
 
     const existing = await prisma.comment.findUnique({ where: { id } });
@@ -98,7 +107,7 @@ router.patch('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('PATCH /api/comments/admin error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -107,6 +116,9 @@ router.delete('/', async (req: Request, res: Response) => {
     const id = String(req.query.id || '').trim();
     if (!id) {
       return res.status(400).json({ error: 'Comment ID is required' });
+    }
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid comment id' });
     }
 
     const existing = await prisma.comment.findUnique({ where: { id } });
@@ -137,7 +149,7 @@ router.delete('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('DELETE /api/comments/admin error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 

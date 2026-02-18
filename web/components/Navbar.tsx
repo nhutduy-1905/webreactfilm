@@ -6,8 +6,6 @@ import AccountMenu from "./AccountMenu";
 import MobileMenu from "./MobileMenu";
 import NavbarItem from "./NavbarItem";
 
-const TOP_OFFSET = 90;
-
 const Navbar: React.FC = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -28,12 +26,11 @@ const Navbar: React.FC = () => {
 
   useEffect(() => {
     // Always reset to transparent on route load; only darken after user scrolls.
-    setShowBackground(false);
-
     const handleScroll = () => {
-      setShowBackground(window.scrollY > TOP_OFFSET);
+      setShowBackground(window.scrollY > 0);
     };
 
+    handleScroll();
     window.addEventListener("scroll", handleScroll);
     return () => {
       window.removeEventListener("scroll", handleScroll);
@@ -107,7 +104,7 @@ const Navbar: React.FC = () => {
           transition-all duration-500
           ${
             showBackground
-              ? "bg-transparent backdrop-blur-0 shadow-none"
+              ? "bg-black/90 backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
               : "bg-transparent backdrop-blur-0 shadow-none"
           }
         `}

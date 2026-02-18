@@ -16,8 +16,9 @@ export interface CurrentUser {
 
 type CurrentUserApiPayload = CurrentUser | { currentUser?: CurrentUser } | null;
 
-const useCurrentUser = () => {
-  const { data, error, isLoading, mutate } = useSwr<CurrentUserApiPayload>("/api/current", fetcher, {
+const useCurrentUser = (enabled = true) => {
+  const key = enabled ? "/api/current" : null;
+  const { data, error, isLoading, mutate } = useSwr<CurrentUserApiPayload>(key, fetcher, {
     revalidateIfStale: false,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,

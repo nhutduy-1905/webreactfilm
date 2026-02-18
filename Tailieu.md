@@ -359,5 +359,79 @@ Khi thay đổi model DB:
 
 Tài liệu này đã được chuẩn hóa UTF-8 tiếng Việt có dấu.
 
+## 14. Cập nhật hôm nay (2026-02-18)
+
+### 14.1 MongoDB Atlas + Prisma
+
+- Đã chuẩn hóa biến kết nối DB theo `DATABASE_URL` cho `backend/.env` và `web/.env`.
+- Đã xác minh luồng `prisma db push` chạy được với Atlas sau khi chỉnh đúng user/password.
+- Đã kiểm tra lại dữ liệu `User/Account` thực tế trên DB để đối chiếu lỗi đăng nhập OAuth.
+
+### 14.2 Auth (NextAuth)
+
+- Đã cập nhật `web/libs/authOptions.ts`:
+  - Parse biến env boolean an toàn (`1/0`, `true/false`, `yes/no`, ...).
+  - Bật liên kết tài khoản cùng email cho OAuth qua:
+    - `allowDangerousEmailAccountLinking` (GitHub)
+    - `allowDangerousEmailAccountLinking` (Google)
+- Mục tiêu: giảm lỗi `OAuthAccountNotLinked` khi email đã tồn tại từ phương thức đăng nhập khác.
+
+### 14.3 Intro trang chủ và intro watch
+
+- Cập nhật `web/pages/index.tsx`:
+  - Quyết định hiển thị intro sớm hơn để tránh giật khi reload.
+  - Tạm hoãn fetch dữ liệu trong lúc intro chạy để giảm re-render.
+  - Khi `moviesLoading`, hiển thị intro thay vì text loading.
+- Cập nhật `web/components/IntroN.tsx`:
+  - Tăng ổn định autoplay direct MP4 (`canplay`, `loadeddata`, `playing` guard).
+  - Thêm `stall guard` để tránh kẹt frame đỏ đầu intro.
+  - Bổ sung preload/loop phù hợp cho trạng thái loading intro.
+  - Chặn URL không phù hợp làm nguồn intro (IMDb/ref param).
+
+### 14.4 Player trang watch (reload/autoplay)
+
+- Cập nhật `web/pages/watch/[movieId].tsx`:
+  - Tích hợp intro thương hiệu theo luồng watch.
+  - Đồng bộ điều khiển cho cả direct video và YouTube embed.
+  - Chặn URL nguồn phát không hợp lệ kiểu IMDb/ref để tránh kẹt player.
+  - Trạng thái cuối cùng theo yêu cầu hiện tại:
+    - Video tự động phát khi vào trang watch.
+    - Reload trang watch vẫn tự phát (không ép `paused`).
+    - Không phát lặp intro 2 lần.
+
+### 14.5 Hook data-fetching
+
+- Cập nhật hooks để hỗ trợ bật/tắt fetch theo trạng thái intro:
+  - `web/hooks/useCurrentUser.ts`
+  - `web/hooks/useMovieList.ts`
+  - `web/hooks/useFavorites.ts`
+- Mục tiêu: giảm tải lúc intro hiển thị, cải thiện cảm nhận mượt khi vào trang.
+
+### 14.6 Kiểm tra kỹ thuật
+
+- Đã chạy và pass type-check sau các đợt sửa:
+  - `cd web && npx tsc --noEmit`
+
+### 14.7 Banner + Watch UI/UX
+
+- Cập nhật `web/components/Billboard.tsx`:
+  - Điều chỉnh danh sách/pool banner theo bộ phim yêu cầu.
+  - Tinh chỉnh audio banner: trạng thái mute mặc định ban đầu, giữ lựa chọn âm thanh của người dùng khi chuyển banner.
+  - Tinh chỉnh tương tác nút (hover, tooltip loa, điều hướng banner).
+  - Tinh chỉnh thanh header để không che khó chịu phần banner.
+- Cập nhật `web/pages/watch/[movieId].tsx`:
+  - Chuyển luồng chia sẻ ưu tiên Facebook theo yêu cầu hiện tại.
+  - Giảm phụ thuộc UI gợi ý từ player ngoài để trải nghiệm xem sạch hơn.
+
+### 14.8 Checklist test nhanh cuối ngày
+
+1. Chạy đủ 3 service: `backend`, `web`, `admin`; xác nhận không có lỗi đỏ ở terminal.
+2. Reload `web` tại trang home: intro chạy 1 lần, hết intro vào trang chủ bình thường.
+3. Kiểm tra banner: chuyển banner được, âm thanh banner giữ theo trạng thái người dùng đã bật/tắt.
+4. Vào trang watch từ home: intro thương hiệu không lặp 2 lần, video chính tự phát sau khi vào player.
+5. Reload ngay tại trang watch: video vẫn tự phát theo cấu hình hiện tại, không kẹt màn đen.
+6. Đăng nhập OAuth (Google/GitHub): không còn lỗi `OAuthAccountNotLinked` với email đã liên kết.
+7. Test nhanh API dữ liệu chính: movie list/random/search trả dữ liệu; comment create/list hoạt động với movie ID đang tồn tại trên Atlas.
+
 
 

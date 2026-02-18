@@ -241,3 +241,61 @@ Mỗi mục gồm:
 - Nội dung `ERROR-FIXES.md` đã được tích hợp vào file này ở dạng tiếng Việt có dấu.
 - `ERROR-FIXES.md` hiện chỉ giữ vai trò file tham chiếu trỏ về `err.md`.
 - Từ thời điểm này ưu tiên cập nhật lịch sử lỗi tại `err.md` để tránh phân tán tài liệu.
+
+---
+
+## 12. Cập nhật lỗi và cách sửa (2026-02-18)
+
+### 12.1 Prisma/MongoDB Atlas báo `SCRAM failure: bad auth`
+
+- Triệu chứng:
+  - `npx prisma db push` lỗi xác thực MongoDB (`authentication failed`).
+- Nguyên nhân gốc:
+  - Sai user/password Atlas hoặc đặt sai biến môi trường (không dùng đúng `DATABASE_URL`).
+  - Mật khẩu có ký tự đặc biệt nhưng chưa URL-encode.
+- Cách sửa:
+  - Chuẩn hóa lại `.env` để Prisma dùng đúng `DATABASE_URL`.
+  - Kiểm tra lại user DB trên Atlas, encode password đúng định dạng URL.
+  - Chạy lại `npx prisma db push` để xác nhận kết nối.
+- File ảnh hưởng:
+  - `backend/.env`
+  - `web/.env`
+
+### 12.2 API trả `Movie not found` / `Comment not found` sau khi đổi DB
+
+- Triệu chứng:
+  - Các API movie/comment trả `404` dù trước đó ở local vẫn có dữ liệu.
+- Nguyên nhân gốc:
+  - ID test lấy từ DB cũ (local) hoặc dữ liệu chưa được seed/import đúng sang Atlas.
+- Cách sửa:
+  - Đồng bộ schema + dữ liệu trên DB đang dùng thật.
+  - Test lại bằng ID lấy trực tiếp từ DB Atlas hiện tại.
+- File ảnh hưởng:
+  - `backend/src/routes/movies.ts`
+  - `backend/src/routes/comments.ts`
+
+### 12.3 Watch intro/player bị đứng, lặp intro hoặc dính UI player ngoài
+
+- Triệu chứng:
+  - Intro có lúc đứng khung hình đỏ.
+  - Có lúc intro phát 2 lần.
+  - Khi hết intro dễ lộ UI gợi ý/video ngoài mong muốn.
+- Nguyên nhân gốc:
+  - Nguồn intro không ổn định và điều kiện autoplay/reload bị xung đột.
+  - Luồng chuyển intro -> video chính chưa được chặn trạng thái lặp tốt.
+- Cách sửa:
+  - Cập nhật `IntroN` để ổn định autoplay và chống kẹt.
+  - Điều chỉnh luồng watch để không phát lặp intro và chuyển player mượt hơn.
+  - Siết điều kiện nguồn phát không hợp lệ (IMDb/ref).
+- File ảnh hưởng:
+  - `web/components/IntroN.tsx`
+  - `web/pages/watch/[movieId].tsx`
+
+### 12.4 Cập nhật cuối ngày: bật autoplay lại cho trang watch
+
+- Theo yêu cầu hiện tại, đã bỏ nhánh ép `paused` khi reload.
+- Hành vi hiện tại:
+  - Vào trang watch: video tự chạy.
+  - Reload trang watch: video vẫn tự chạy.
+- File ảnh hưởng:
+  - `web/pages/watch/[movieId].tsx`

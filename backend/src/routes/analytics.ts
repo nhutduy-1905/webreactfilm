@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
+import { sendDbError } from '../utils/dbError';
 
 const router = Router();
 
@@ -370,7 +371,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('GET /api/analytics error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 

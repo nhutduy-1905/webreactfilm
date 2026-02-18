@@ -1,8 +1,29 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../prisma';
+import { sendDbError } from '../utils/dbError';
 
 const router = Router();
 const EVENTS_COLLECTION = 'movie_engagement_events';
+const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
+const ALLOWED_SORT_FIELDS = new Set([
+  'createdAt',
+  'updatedAt',
+  'title',
+  'releaseDate',
+  'duration',
+  'code',
+  'status',
+]);
+
+const isValidObjectId = (value: unknown): value is string => (
+  typeof value === 'string' && OBJECT_ID_REGEX.test(value)
+);
+
+const ensureObjectIdParam = (res: Response, value: unknown, name = 'id') => {
+  if (isValidObjectId(value)) return true;
+  res.status(400).json({ error: `Invalid ${name}` });
+  return false;
+};
 
 async function readAggregate(pipeline: Record<string, unknown>[]) {
   try {
@@ -157,7 +178,8 @@ router.get('/', async (req: Request, res: Response) => {
       where.title = { contains: req.query.search as string, mode: 'insensitive' };
     }
 
-    const sortField = (req.query.sort as string) || 'createdAt';
+    const requestedSortField = String(req.query.sort || '').trim();
+    const sortField = ALLOWED_SORT_FIELDS.has(requestedSortField) ? requestedSortField : 'createdAt';
     const sortOrder = (req.query.order as string) === 'asc' ? 'asc' : 'desc';
 
     const [movies, total] = await Promise.all([
@@ -182,7 +204,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('GET /api/movies error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -218,7 +240,7 @@ router.get('/random', async (_req: Request, res: Response) => {
     res.json(withGenre(selectedMovie, viewCountByMovieId.get(selectedMovie.id) || 0));
   } catch (error) {
     console.error('GET /api/movies/random error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -255,7 +277,7 @@ router.get('/search', async (req: Request, res: Response) => {
     res.json(movies.map((movie) => withGenre(movie, viewCountByMovieId.get(movie.id) || 0)));
   } catch (error) {
     console.error('GET /api/movies/search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -297,12 +319,12 @@ router.get('/check-slug', async (req: Request, res: Response) => {
     if (!slug) return res.json({ available: false });
 
     const where: any = { slug };
-    if (excludeId) where.id = { not: excludeId };
+    if (excludeId && isValidObjectId(excludeId)) where.id = { not: excludeId };
 
     const existing = await prisma.movie.findFirst({ where });
     res.json({ available: !existing, slug });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -361,8 +383,11 @@ router.get('/check-duplicate', async (req: Request, res: Response) => {
     const where: any = {
       title: { equals: title, mode: 'insensitive' },
     };
-    if (excludeId) where.id = { not: excludeId };
+    if (excludeId && isValidObjectId(excludeId)) where.id = { not: excludeId };
     if (year) {
+      if (!/^\d{4}$/.test(year)) {
+        return res.status(400).json({ error: 'year must be YYYY' });
+      }
       const start = new Date(`${year}-01-01`);
       const end = new Date(`${parseInt(year) + 1}-01-01`);
       where.releaseDate = { gte: start, lt: end };
@@ -371,7 +396,7 @@ router.get('/check-duplicate', async (req: Request, res: Response) => {
     const existing = await prisma.movie.findFirst({ where });
     res.json({ duplicate: !!existing, movie: existing ? { id: existing.id, title: existing.title, code: existing.code } : null });
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -398,6 +423,8 @@ router.get('/check-duplicate', async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    if (!ensureObjectIdParam(res, req.params.id)) return;
+
     const movie = await prisma.movie.findUnique({
       where: { id: req.params.id },
     });
@@ -406,7 +433,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json(withGenre(movie, viewCountByMovieId.get(movie.id) || 0));
   } catch (error) {
     console.error('GET /api/movies/:id error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -520,7 +547,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(201).json(withGenre(movie));
   } catch (error) {
     console.error('POST /api/movies error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -546,6 +573,8 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
+    if (!ensureObjectIdParam(res, req.params.id)) return;
+
     const existing = await prisma.movie.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Movie not found' });
 
@@ -624,7 +653,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
     res.json(withGenre(movie));
   } catch (error) {
     console.error('PATCH /api/movies/:id error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -645,6 +674,11 @@ router.patch('/:id', async (req: Request, res: Response) => {
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    if (!ensureObjectIdParam(res, req.params.id)) return;
+
+    const existing = await prisma.movie.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Movie not found' });
+
     const movie = await prisma.movie.update({
       where: { id: req.params.id },
       data: { status: 'hidden' },
@@ -652,7 +686,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     res.json({ message: 'Movie hidden', movie: withGenre(movie) });
   } catch (error) {
     console.error('DELETE /api/movies/:id error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 
@@ -683,10 +717,15 @@ router.delete('/:id', async (req: Request, res: Response) => {
  */
 router.patch('/:id/status', async (req: Request, res: Response) => {
   try {
+    if (!ensureObjectIdParam(res, req.params.id)) return;
+
     const { status } = req.body;
     if (!['draft', 'published', 'hidden'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status. Must be draft, published, or hidden' });
     }
+
+    const existing = await prisma.movie.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Movie not found' });
 
     const movie = await prisma.movie.update({
       where: { id: req.params.id },
@@ -696,7 +735,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
     res.json(withGenre(movie));
   } catch (error) {
     console.error('PATCH /api/movies/:id/status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return sendDbError(res, error);
   }
 });
 

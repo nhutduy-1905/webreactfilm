@@ -107,16 +107,32 @@ const CommentSection: React.FC<CommentSectionProps> = ({ movieId }) => {
   const handleLikeDislike = async (commentId: string, action: 'like' | 'dislike') => {
     try {
       const response = await axios.post('/api/comments/like', { commentId, action });
+      const updated = response.data || {};
       // Update local state
       setComments(prev => prev.map(c => {
         if (c.id === commentId) {
-          return response.data;
+          return {
+            ...c,
+            ...updated,
+            likedBy: Array.isArray(updated.likedBy) ? updated.likedBy : (Array.isArray(c.likedBy) ? c.likedBy : []),
+            dislikedBy: Array.isArray(updated.dislikedBy) ? updated.dislikedBy : (Array.isArray(c.dislikedBy) ? c.dislikedBy : []),
+            replies: Array.isArray(c.replies) ? c.replies : [],
+            replyCount: typeof c.replyCount === 'number' ? c.replyCount : (Array.isArray(c.replies) ? c.replies.length : 0),
+          };
         }
         // Check if it's a reply
         if (c.replies) {
           return {
             ...c,
-            replies: c.replies.map(r => r.id === commentId ? response.data : r)
+            replies: c.replies.map(r => {
+              if (r.id !== commentId) return r;
+              return {
+                ...r,
+                ...updated,
+                likedBy: Array.isArray(updated.likedBy) ? updated.likedBy : (Array.isArray(r.likedBy) ? r.likedBy : []),
+                dislikedBy: Array.isArray(updated.dislikedBy) ? updated.dislikedBy : (Array.isArray(r.dislikedBy) ? r.dislikedBy : []),
+              };
+            })
           };
         }
         return c;
